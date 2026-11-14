@@ -160,6 +160,12 @@ pub struct FarmingConfig {
     /// Search for mob circle pattern
     circle_pattern_rotation_duration: Option<u64>,
 
+    /// Farm radius in pixels. 0 means disabled (no leash). When > 0 the bot
+    /// only targets mobs within this radius of the screen center (the
+    /// character) and stops its own wandering (circle pattern / forward
+    /// obstacle escape) so the character stays in a fixed area.
+    farm_radius: Option<u32>,
+
     /// Disable farming
     farming_enabled: Option<bool>,
 
@@ -215,6 +221,10 @@ impl FarmingConfig {
 
     pub fn circle_pattern_rotation_duration(&self) -> u64 {
         self.circle_pattern_rotation_duration.unwrap_or(30)
+    }
+
+    pub fn farm_radius(&self) -> u32 {
+        self.farm_radius.unwrap_or(0)
     }
 
     pub fn obstacle_avoidance_cooldown(&self) -> u128 {

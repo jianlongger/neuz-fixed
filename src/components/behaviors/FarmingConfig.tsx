@@ -52,6 +52,7 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
         'max_mobs_name_width': 180,
         'circle_pattern_rotation_duration': 30,
         'min_hp_attack': 30,
+        'farm_radius': 0,
         'prevent_already_attacked': true,
         'prioritize_aggro': true,
         'interval_between_buffs': 2000,
@@ -188,6 +189,12 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         layout="v"
                         label={<ConfigLabel name="绕圈巡逻时长" helpText="机器人会绕圈移动以寻找目标。设为 0 则原地不动；值越小圈越大。默认 30。" />}
                         item={<NumericInput value={config.circle_pattern_rotation_duration} onChange={value => onChange?.({ ...config, circle_pattern_rotation_duration: value })} />}
+                    />
+
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="刷怪范围(像素)" helpText="以角色当前所在位置（开始刷怪时的位置）为圆心，仅在该半径内选取并攻击怪物，并停止自动走位巡逻，避免角色跑远。0 = 不限制。" />}
+                        item={<NumericInput unit='px' min={0} max={2000} value={config.farm_radius ?? 0} onChange={value => onChange?.({ ...config, farm_radius: value })} />}
                     />
 
                     <ConfigTableRow

@@ -166,6 +166,12 @@ impl FarmingBehavior<'_> {
         };
     }
 
+    /// Whether the leash (farm radius) is active. When active the bot stays
+    /// inside a fixed area around the character instead of wandering.
+    fn farm_radius_enabled(&self, config: &FarmingConfig) -> bool {
+        config.farm_radius() > 0
+    }
+
     fn update_timestamps(&mut self, config: &FarmingConfig) {
         self.update_pickup_pet(config);
 
@@ -337,6 +343,13 @@ impl FarmingBehavior<'_> {
         } else {
             self.last_no_ennemy_time = Some(Instant::now());
         }
+
+        // Leash (farm radius): stay in the area. Don't run, don't spin away.
+        // Keep scanning in place (detection runs in SearchingForEnemy).
+        if self.farm_radius_enabled(config) {
+            return State::SearchingForEnemy;
+        }
+
         use crate::movement::prelude::*;
         // Try rotating first in order to locate nearby enemies
         if self.rotation_movement_tries < 30 {
@@ -390,10 +403,16 @@ impl FarmingBehavior<'_> {
             // Transition to next state
             State::NoEnemyFound
         } else {
-            // Calculate max distance of mobs
-            let max_distance = match config.circle_pattern_rotation_duration() == 0 {
-                true => 325,
-                false => 1000,
+            // Calculate max distance of mobs. When the leash (farm radius) is
+            // active, cap targeting to that radius so the character never walks
+            // far away from the starting position.
+            let max_distance = if self.farm_radius_enabled(config) {
+                config.farm_radius() as i32
+            } else {
+                match config.circle_pattern_rotation_duration() == 0 {
+                    true => 325,
+                    false => 1000,
+                }
             };
             let mob_list = self.prioritize_aggro(config, image, mobs);
 
@@ -523,10 +542,20 @@ impl FarmingBehavior<'_> {
         State::SearchingForEnemy
     }
 
-    fn avoid_obstacle(&mut self, image: &mut ImageAnalyzer, max_avoid: u32) -> bool {
+    fn avoid_obstacle(&mut self, config: &FarmingConfig, image: &mut ImageAnalyzer, max_avoid: u32) -> bool {
         if self.obstacle_avoidance_count < max_avoid {
             use crate::movement::prelude::*;
-            if self.obstacle_avoidance_count == 0 {
+            if self.farm_radius_enabled(config) {
+                // Leash: escape in place (jump + small rotate) without running
+                // away from the farm area.
+                let rotation_key = ["A", "D"].choose(&mut self.rng).unwrap_or(&"A");
+                play!(self.movement => [
+                    HoldKeyFor("Space", dur::Fixed(400)),
+                    HoldKeyFor(rotation_key, dur::Fixed(200)),
+                    Wait(dur::Fixed(400)),
+                    PressKey("Z"),
+                ]);
+            } else if self.obstacle_avoidance_count == 0 {
                 play!(self.movement => [
                     PressKey("Z"),
                     HoldKeys(vec!["W", "Space"]),
@@ -609,20 +638,20 @@ impl FarmingBehavior<'_> {
                 .elapsed()
                 .as_millis();
 
-            // Obstacle avoidance
-            if
-                !image.client_stats.target_on_screen ||
-                last_target_hp_update > config.obstacle_avoidance_cooldown()
-            {
-                //slog::debug!(self.logger, "Obstacle avoidance"; "target_on_screen" => image.client_stats.target_on_screen, "last_target_hp_update" => last_target_hp_update, "obstacle_avoidance_cooldown" => config.obstacle_avoidance_cooldown());
-                if image.client_stats.target_hp.value == 100 {
-                    if self.avoid_obstacle(image, 2) {
+                // Obstacle avoidance
+                if
+                    !image.client_stats.target_on_screen ||
+                    last_target_hp_update > config.obstacle_avoidance_cooldown()
+                {
+                    //slog::debug!(self.logger, "Obstacle avoidance"; "target_on_screen" => image.client_stats.target_on_screen, "last_target_hp_update" => last_target_hp_update, "obstacle_avoidance_cooldown" => config.obstacle_avoidance_cooldown());
+                    if image.client_stats.target_hp.value == 100 {
+                        if self.avoid_obstacle(config, image, 2) {
+                            return State::SearchingForEnemy;
+                        }
+                    } else if self.avoid_obstacle(config, image, config.obstacle_avoidance_max_try()) {
                         return State::SearchingForEnemy;
                     }
-                } else if self.avoid_obstacle(image, config.obstacle_avoidance_max_try()) {
-                    return State::SearchingForEnemy;
                 }
-            }
             self.get_slot_for(config, None, SlotType::AttackSkill, true);
 
             if config.max_aoe_farming() > 1 {
