@@ -146,27 +146,31 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         label={<ConfigLabel name="附加颜色" helpText="若同一区域有其它名字颜色的怪物（如红怪、绿怪），可在这里追加颜色样本，每行一个。留空则只使用上方主颜色。" />}
                         item={
                             <div>
-                                {((selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).map((c, i) => (
+                                {(() => {
+                                    const list: number[][] = (selectedMobType.current === 0
+                                        ? (config.passive_mobs_colors_extra ?? [])
+                                        : (config.aggressive_mobs_colors_extra ?? []));
+                                    const keyName = selectedMobType.current === 0
+                                        ? 'passive_mobs_colors_extra'
+                                        : 'aggressive_mobs_colors_extra';
+                                    return list.map((c, i) => (
                                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                                         <ColorSelector value={c} onChange={v => {
-                                            const key = selectedMobType.current === 0 ? 'passive_mobs_colors_extra' : 'aggressive_mobs_colors_extra';
-                                            const arr = (selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).slice();
+                                            const arr = list.slice();
                                             arr[i] = v;
-                                            onChange?.({ ...config, [key]: arr });
+                                            onChange?.({ ...config, [keyName]: arr });
                                         }} />
                                         <button onClick={() => {
-                                            const key = selectedMobType.current === 0 ? 'passive_mobs_colors_extra' : 'aggressive_mobs_colors_extra';
-                                            const arr = (selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).slice();
+                                            const arr = list.slice();
                                             arr.splice(i, 1);
-                                            onChange?.({ ...config, [key]: arr });
+                                            onChange?.({ ...config, [keyName]: arr });
                                         }}>×</button>
                                     </div>
-                                ))}
+                                ); })()}
                                 <button onClick={() => {
-                                    const key = selectedMobType.current === 0 ? 'passive_mobs_colors_extra' : 'aggressive_mobs_colors_extra';
-                                    const arr = (selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).slice();
+                                    const arr = list.slice();
                                     arr.push([255, 0, 0]);
-                                    onChange?.({ ...config, [key]: arr });
+                                    onChange?.({ ...config, [keyName]: arr });
                                 }}>+ 添加颜色</button>
                             </div>
                         }
