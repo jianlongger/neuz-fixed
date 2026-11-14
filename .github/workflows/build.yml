@@ -1,0 +1,49 @@
+name: Build Neuz (fixed)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Enable yarn (corepack)
+        run: corepack enable
+
+      - name: Install WiX Toolset (required for MSI bundling)
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile wix.zip
+          Expand-Archive wix.zip -DestinationPath wix
+          echo "$env:GITHUB_WORKSPACE\wix" | Out-File -Append -FilePath $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Remove stale Cargo.lock (drop sentry residue)
+        run: Remove-Item src-tauri/Cargo.lock -Force -ErrorAction SilentlyContinue
+        shell: pwsh
+
+      - name: Install frontend deps
+        run: yarn install
+
+      - name: Build Tauri release
+        env:
+          CI: false
+        run: yarn tauri build
+
+      - name: Upload msi artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neuz-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
