@@ -148,17 +148,30 @@ fn get_profiles(_state: tauri::State<AppState>, app_handle: tauri::AppHandle) ->
     let base = resolve_app_data_dir(&app_handle);
     debug_log(&format!("get_profiles: resolved base = {:?}", base));
     let _ = fs::create_dir_all(&base);
+
+    // 清理残留的残缺文件夹 "profile_"（只有前缀、没有名字）：它会被当成合法
+    // profile 列出来，但前端把 "profile_" 前缀剥离后变成空字符串，导致表格显示
+    // 空白、且点 Play 时 profileId 为空而没有任何反应。仅当目录为空时才删除，
+    // 非空则保留交由人工处理，避免误删真实数据。
+    let junk = base.join("profile_");
+    if let Ok(meta) = fs::metadata(&junk) {
+        if meta.is_dir() {
+            let _ = fs::remove_dir(&junk);
+        }
+    }
+
     let mut profiles = vec![];
     match fs::read_dir(&base) {
         Ok(paths) => {
             for entry in paths.flatten() {
                 if let Some(name) = entry.file_name().to_str() {
-                    if name.starts_with("profile_") {
+                    // 只接受形如 profile_<非空名> 的合法项，跳过残缺的 "profile_"
+                    if name.starts_with("profile_") && name.len() > "profile_".len() {
                         profiles.push(name.to_string());
                     }
                 }
             }
-            debug_log(&format!("get_profiles: read_dir ok, found {} profile_ entries", profiles.len()));
+            debug_log(&format!("get_profiles: read_dir ok, found {} valid profile entries", profiles.len()));
         }
         Err(e) => {
             debug_log(&format!("get_profiles: read_dir FAILED: {}", e));
