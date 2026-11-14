@@ -168,9 +168,15 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                                     </div>
                                 )); })()}
                                 <button onClick={() => {
-                                    const arr = list.slice();
+                                    const addList: number[][] = (selectedMobType.current === 0
+                                        ? (config.passive_mobs_colors_extra ?? [])
+                                        : (config.aggressive_mobs_colors_extra ?? []));
+                                    const addKey = selectedMobType.current === 0
+                                        ? 'passive_mobs_colors_extra'
+                                        : 'aggressive_mobs_colors_extra';
+                                    const arr = addList.slice();
                                     arr.push([255, 0, 0]);
-                                    onChange?.({ ...config, [keyName]: arr });
+                                    onChange?.({ ...config, [addKey]: arr });
                                 }}>+ 添加颜色</button>
                             </div>
                         }
