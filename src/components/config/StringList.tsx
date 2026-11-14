@@ -17,7 +17,7 @@ const StringList = ({ className, messages, onChange }: Props) => {
     return (
         <div className={className}>
             <textarea value={messageBuffer?.join("\n") ?? ""} onChange={e => setMessageBuffer(getValue(e))} />
-            <div className="btn" onClick={() => onChange?.(messageBuffer)}>Apply</div>
+            <div className="btn" onClick={() => onChange?.(messageBuffer)}>应用</div>
         </div>
     )
 }

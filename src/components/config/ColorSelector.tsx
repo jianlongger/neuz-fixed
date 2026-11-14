@@ -9,11 +9,11 @@ type Props = {
 const NumericInput = ({ className, value,  onChange }: Props) => {
     return (
         <div className={className}>
-            <span className="unit">R </span>
+            <span className="unit">红 </span>
             <input min={0} max={255} type="number" value={value[0]} onChange={(e)=>{value[0] = e.target.valueAsNumber;onChange(value)}} />
-            <span className="unit">G </span>
+            <span className="unit">绿 </span>
             <input min={0} max={255} type="number" value={value[1]} onChange={(e)=>{value[1] = e.target.valueAsNumber;onChange(value)}} />
-            <span className="unit">B </span>
+            <span className="unit">蓝 </span>
             <input min={0} max={255} type="number" value={value[2]} onChange={(e)=>{value[2] = e.target.valueAsNumber;onChange(value)}} />
         </div>
     )

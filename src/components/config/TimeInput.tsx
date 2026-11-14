@@ -25,7 +25,7 @@ const TimeInput = ({ className, value, onChange }: Props) => {
                 }}
             />
             {!stopWatch.validStringFormat(newValue) ?
-                <span className="unit" style={{color:"red"}} onClick={() => {setNewValue(stopWatch.toString())}}>Invalid</span> : <span className="unit" style={{color:"green"}}>Valid</span>
+                <span className="unit" style={{color:"red"}} onClick={() => {setNewValue(stopWatch.toString())}}>无效</span> : <span className="unit" style={{color:"green"}}>有效</span>
             }
         </div>
     )

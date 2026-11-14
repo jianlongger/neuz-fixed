@@ -84,82 +84,82 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
             <SlotBar botMode="farming" config={config} onChange={onChange} />
             {/* DEBUG */}
             <YesNoModal isShowing={resetSlotYesNo.isShown} hide={resetSlotYesNo.close}
-                title={<h4>Confirm slot reset this action is irreversible</h4>}
+                title={<h4>确认重置所有技能槽？此操作不可撤销</h4>}
                 onYes={() => {onChange({ ...config, slot_bars: createSlotBars() })}}/>
-            <Modal isShowing={debugModal.isShown} hide={debugModal.close} title={<h4>Settings</h4>} body={
+            <Modal isShowing={debugModal.isShown} hide={debugModal.close} title={<h4>设置</h4>} body={
                 <ConfigTable>
                     <ConfigTableRow
-                        label={<ConfigLabel name="Mobs detection" helpText="" />}
+                        label={<ConfigLabel name="怪物检测" helpText="" />}
                         item={<button onClick={mobsNameDebugModal.open}>⚙️</button>}
                     />
                     <ConfigTableRow
-                        label={<ConfigLabel name="Avoidances" helpText="" />}
+                        label={<ConfigLabel name="避让" helpText="" />}
                         item={<button onClick={obstacleAvoidanceDebugModal.open}>⚙️</button>}
                     />
                     <ConfigTableRow
-                        label={<ConfigLabel name="On death event" helpText="" />}
+                        label={<ConfigLabel name="死亡事件" helpText="" />}
                         item={<button onClick={onDeathModal.open}>⚙️</button>}
                     />
                     <ConfigTableRow
-                        label={<ConfigLabel name="Interval between buffs" helpText="" />}
+                        label={<ConfigLabel name="Buff 间隔" helpText="" />}
                         item={<TimeInput value={config.interval_between_buffs} onChange={value => onChange({...config, interval_between_buffs: value})} />}
                     />
                     <ConfigTableRow
-                        label={<ConfigLabel name="Debug" />}
+                        label={<ConfigLabel name="调试模式" />}
                         item={<BooleanSlider value={debugMode} onChange={value => setDebugMode(value)} />}
                     />
 
                     <ConfigTableRow
-                        label={<ConfigLabel name="Reset all slots" helpText="" />}
+                        label={<ConfigLabel name="重置所有技能槽" helpText="" />}
                         item={<button onClick={resetSlotYesNo.open}>⚙️</button>}
                     />
                 </ConfigTable>
             }/>
-            <Modal isShowing={mobsColorsDebugModal.isShown} hide={mobsColorsDebugModal.close} title={(selectedMobType.current === 0)? <h4>Passive mob detection</h4> : <h4>Aggressive mob detection</h4>} body={
+            <Modal isShowing={mobsColorsDebugModal.isShown} hide={mobsColorsDebugModal.close} title={(selectedMobType.current === 0)? <h4>被动怪检测</h4> : <h4>主动怪检测</h4>} body={
                 <ConfigTable>
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Colors" helpText="Monster's name color reference. Edit these values if you are sure what you are doing." />}
+                        label={<ConfigLabel name="颜色" helpText="怪物名字颜色参考。如果你确定在做什么，可修改这些值。" />}
                         item={<ColorSelector value={(selectedMobType.current === 0)? config.passive_mobs_colors ?? [] : config.aggressive_mobs_colors ?? []} onChange={value => onChange?.((selectedMobType.current === 0)?{ ...config, passive_mobs_colors: value}: { ...config, aggressive_mobs_colors: value})} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Tolerence" helpText="Monster's name color tolerence. Edit these values if you are sure what you are doing." />}
+                        label={<ConfigLabel name="容差" helpText="怪物名字颜色容差。如果你确定在做什么，可修改这些值。" />}
                         item={<NumericInput min={0} max={255} unit="#" value={(selectedMobType.current === 0)? config.passive_tolerence : config.aggressive_tolerence} onChange={value => onChange?.((selectedMobType.current === 0)? { ...config, passive_tolerence: value } : { ...config, aggressive_tolerence: value })} />}
                     />
                     <ConfigTableRow
                     layout="v"
                         label={<ConfigLabel name="" helpText="" />}
-                        item={<button onClick={()=>colorsRefResetter[selectedMobType.current]()}>Reset</button>}
+                        item={<button onClick={()=>colorsRefResetter[selectedMobType.current]()}>重置</button>}
                     />
                 </ConfigTable>
             }/>
-            <Modal isShowing={obstacleAvoidanceDebugModal.isShown} hide={obstacleAvoidanceDebugModal.close} title={<h4>Avoidances</h4>} body={
+            <Modal isShowing={obstacleAvoidanceDebugModal.isShown} hide={obstacleAvoidanceDebugModal.close} title={<h4>避让</h4>} body={
                 <ConfigTable>
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Avoid attacked monster" helpText="Check whether a mob is already attacked and avoid it if so. Must be disabled if you play in party" />}
+                        label={<ConfigLabel name="避开已被攻击的怪" helpText="检查怪物是否已被攻击，若是则避开。组队时须关闭。" />}
                         item={<BooleanSlider value={config.prevent_already_attacked ?? true} onChange={value => onChange?.({ ...config, prevent_already_attacked: value })} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Obstacle avoidance cooldown" helpText="Time before we try to move or escape if monster's HP doesn't change" />}
+                        label={<ConfigLabel name="卡住后避让冷却" helpText="怪物血量不变时，多久后尝试移动或脱身。" />}
                         item={<TimeInput value={config.obstacle_avoidance_cooldown} onChange={value => onChange({...config, obstacle_avoidance_cooldown: value})} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Obstacle avoidance max try" helpText="After this number of try it'll abort attack and search for another target" />}
+                        label={<ConfigLabel name="避让最大尝试次数" helpText="尝试这么多次后放弃攻击并寻找新目标。" />}
                         item={<NumericInput unit='#' value={config.obstacle_avoidance_max_try} onChange={value => onChange({...config, obstacle_avoidance_max_try: value})} />}
                     />
                 </ConfigTable>
             }/>
-            <Modal isShowing={mobsNameDebugModal.isShown} hide={mobsNameDebugModal.close} title={<h4>Mobs detection</h4>} body={
+            <Modal isShowing={mobsNameDebugModal.isShown} hide={mobsNameDebugModal.close} title={<h4>怪物检测</h4>} body={
                 <ConfigTable>
                     { debugMode &&
                     <>
                         <ConfigTableRow
                             layout="v"
-                            label={<ConfigLabel name="Passive mob detection" helpText="" />}
+                            label={<ConfigLabel name="被动怪检测" helpText="" />}
                             item={<button onClick={() => {
                                 selectedMobType.current = 0
                                 mobsColorsDebugModal.open()
@@ -167,7 +167,7 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         />
                         <ConfigTableRow
                             layout="v"
-                            label={<ConfigLabel name="Agressive mob detection" helpText="" />}
+                            label={<ConfigLabel name="主动怪检测" helpText="" />}
                             item={<button onClick={() => {
                                 selectedMobType.current = 1
                                 mobsColorsDebugModal.open()
@@ -175,74 +175,74 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         />
                         <ConfigTableRow
                             layout="v"
-                            label={<ConfigLabel name="Min mobs name width" helpText="" />}
+                            label={<ConfigLabel name="怪物名最小宽度" helpText="" />}
                             item={<NumericInput unit='px' value={config.min_mobs_name_width} onChange={value => onChange({...config, min_mobs_name_width: value})} />}
                         />
                         <ConfigTableRow
                             layout="v"
-                            label={<ConfigLabel name="Max mobs name width" helpText="" />}
+                            label={<ConfigLabel name="怪物名最大宽度" helpText="" />}
                             item={<NumericInput unit='px' value={config.max_mobs_name_width} onChange={value => onChange({...config, max_mobs_name_width: value})} />}
                         />
                     </> }
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Circle pattern duration" helpText="The bot will try to move in a circle pattern to find targets. Value of 0 will stay in place. Lower the value to increase circle size. Default : 30" />}
+                        label={<ConfigLabel name="绕圈巡逻时长" helpText="机器人会绕圈移动以寻找目标。设为 0 则原地不动；值越小圈越大。默认 30。" />}
                         item={<NumericInput value={config.circle_pattern_rotation_duration} onChange={value => onChange?.({ ...config, circle_pattern_rotation_duration: value })} />}
                     />
 
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Min HP percent to attack" helpText="Minimum required HP value to attack a monster (only for passive ones)" />}
+                        label={<ConfigLabel name="攻击所需最低血量%" helpText="攻击怪物所需的最低血量（仅被动怪）。" />}
                         item={<NumericInput unit='%' value={config.min_hp_attack} onChange={value => onChange({...config, min_hp_attack: value})} />}
                     />
 
 
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Max number of mobs to attack" helpText="Max number of mobs to attack at the same time" />}
+                        label={<ConfigLabel name="同时攻击的最大怪数" helpText="同时攻击的怪物最大数量。" />}
                         item={<NumericInput value={config.aoe_farming} onChange={value => onChange?.({ ...config, aoe_farming: value })} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Prioritize Aggro" helpText="When selecting a target, give priorities to aggro" />}
+                        label={<ConfigLabel name="优先主动怪" helpText="选择目标时优先主动怪。" />}
                         item={<BooleanSlider value={config.prioritize_aggro ?? true} onChange={value => onChange?.({ ...config, prioritize_aggro: value })} />}
                     />
 
                 </ConfigTable>
             }/>
             <Modal isShowing={debugWarningModal.isShown} hide={debugWarningModal.close}
-            title={<h4>WARNING - Debug mode </h4>} body={
+            title={<h4>警告 - 调试模式</h4>} body={
                 <div className='modalCenteredContent'>
-                    <h1>Warning !</h1>
-                    <h2>For advanced users ONLY ! If something went wrong after you set something don't need to cry just reset your profile</h2>
+                    <h1>警告！</h1>
+                    <h2>仅限高级用户！若设置后出现问题，无需惊慌，重置你的配置即可。</h2>
                 </div>
             }/>
             {/* DEBUG END */}
             <Modal isShowing={onDeathModal.isShown} hide={onDeathModal.close}
-            title={<h4>Auto disconnect</h4>} body={
+            title={<h4>自动断开</h4>} body={
                 <ConfigTable>
                     <ConfigTableRow
-                        label={<ConfigLabel name="No mob time out" helpText="After this time character will disconnect if no mobs were found" />}
+                        label={<ConfigLabel name="无怪超时" helpText="若这么长时间没找到怪，角色将断开连接。" />}
                         item={<TimeInput value={config.mobs_timeout} onChange={value => onChange({...config, mobs_timeout: value})} />}
                     />
                     <ConfigTableRow
-                        label={<ConfigLabel name="Disconnect" helpText="Enable will automatically disconnect, otherwise we'll wait for revive" />}
+                        label={<ConfigLabel name="断开连接" helpText="开启则自动断开，否则等待复活。" />}
                         item={<BooleanSlider value={config.on_death_disconnect ?? true} onChange={value => onChange?.({ ...config, on_death_disconnect: value })} />}
                     />
                 </ConfigTable>
             }/>
 
             <Modal isShowing={onAFKModal.isShown} hide={onAFKModal.close}
-                   title={<h4>AFK behavior</h4>} body={
+                   title={<h4>挂机行为</h4>} body={
                 <ConfigTable>
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Disconnect" helpText="If enabled will automatically disconnect the AFK character" />}
+                        label={<ConfigLabel name="断开连接" helpText="开启则自动断开挂机角色。" />}
                         item={<BooleanSlider value={config.on_afk_disconnect ?? false} onChange={value => onChange?.({ ...config, on_afk_disconnect: value })} />}
                     />
 
                     <ConfigTableRow
-                        label={<ConfigLabel name="No action time out" helpText="After this time character will disconnect if AFK Disconnect is enabled" />}
+                        label={<ConfigLabel name="无操作超时" helpText="若开启挂机断开，超过此时长角色将断开。" />}
                         item={<TimeInput value={config.afk_timeout} onChange={value => onChange({...config, afk_timeout: value})} />}
                     />
 
@@ -250,57 +250,57 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
             }/>
 
             <Modal isShowing={statsModal.isShown} hide={statsModal.close}
-            title={<h4>Stats</h4>} body={
+            title={<h4>统计</h4>} body={
                 <div className="stats">
                     <div className="stats__state">
                         <span className={`stats__badge stats__badge--${botState}`}>{botState}</span>
                     </div>
 
                     <div className="stats__section">
-                        <div className="stats__section-title">Session</div>
+                        <div className="stats__section-title">本次会话</div>
                         <div className="stats__grid">
                             <div className="stats__card">
-                                <span className="stats__label">Kills</span>
+                                <span className="stats__label">击杀</span>
                                 <span className="stats__value">{info?.enemy_kill_count ?? 0}</span>
                             </div>
                             <div className="stats__card">
-                                <span className="stats__label">Botting Time</span>
+                                <span className="stats__label">挂机时长</span>
                                 <span className="stats__value stats__value--time">{botStopWatch?.toString() ?? "00:00:00:000"}</span>
                             </div>
                         </div>
                     </div>
 
                     <div className="stats__section">
-                        <div className="stats__section-title">Last Kill</div>
+                        <div className="stats__section-title">上次击杀</div>
                         <div className="stats__grid">
                             <div className="stats__card">
-                                <span className="stats__label">Search Time</span>
+                                <span className="stats__label">搜索耗时</span>
                                 <span className="stats__value stats__value--time">{searchMobStopWatch}</span>
                             </div>
                             <div className="stats__card">
-                                <span className="stats__label">Fight Time</span>
+                                <span className="stats__label">战斗耗时</span>
                                 <span className="stats__value stats__value--time">{fightStopWatch}</span>
                             </div>
                         </div>
                     </div>
 
                     <div className="stats__section">
-                        <div className="stats__section-title">Performance</div>
+                        <div className="stats__section-title">效率</div>
                         <div className="stats__grid">
                             <div className="stats__card">
-                                <span className="stats__label">Last KPM</span>
+                                <span className="stats__label">近期每分钟击杀</span>
                                 <span className="stats__value">{info?.kill_min_avg?.toFixed(2) ?? 0}</span>
                             </div>
                             <div className="stats__card">
-                                <span className="stats__label">Last KPH</span>
+                                <span className="stats__label">近期每小时击杀</span>
                                 <span className="stats__value">{info?.kill_hour_avg?.toFixed(2) ?? 0}</span>
                             </div>
                             <div className="stats__card">
-                                <span className="stats__label">Global KPM</span>
+                                <span className="stats__label">总每分钟击杀</span>
                                 <span className="stats__value">{globalKPM === "NaN" || globalKPM === "Infinity" ? "0.00" : globalKPM}</span>
                             </div>
                             <div className="stats__card">
-                                <span className="stats__label">Global KPH</span>
+                                <span className="stats__label">总每小时击杀</span>
                                 <span className="stats__value">{globalKPH === "NaN" || globalKPH === "Infinity" ? "0.00" : globalKPH}</span>
                             </div>
                         </div>
@@ -310,18 +310,18 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
             {info && (
                 <div className="info">
                     <div className="row">
-                        <div>State: { botState }</div>
+                        <div>状态：{ botState }</div>
                     </div>
                     <div className="row">
-                        <div>Target's detection mode: { config.is_stop_fighting? "🛑" : "✅" }</div>
+                        <div>目标检测：{ config.is_stop_fighting? "🛑" : "✅" }</div>
                     </div>
                     <button className="btn sm"
                             onClick={e => onChange?.({ ...config, is_stop_fighting: !config.is_stop_fighting })} >
-                            Detection 🎯
+                            检测 🎯
                     </button>
                     <div className="row">
-                        <button className="btn sm" onClick={statsModal.open}>Stats 📊</button>
-                        <button className="btn sm" onClick={debugModal.open}>Settings ⚙️</button>
+                        <button className="btn sm" onClick={statsModal.open}>统计 📊</button>
+                        <button className="btn sm" onClick={debugModal.open}>设置 ⚙️</button>
                     </div>
                 </div>
             )}

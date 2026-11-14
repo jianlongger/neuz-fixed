@@ -9,7 +9,7 @@ type Props = {
 const ProfileDisplay = ({ className, profileId }: Props) => {
     return(
         <div className={className}>
-           Profile: {profileId}
+           配置：{profileId}
         </div>
     )
 }

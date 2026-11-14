@@ -1,4 +1,4 @@
-import { useReducer, useState, useMemo, useRef, useEffect } from 'react'
+import { useReducer, useState, useMemo, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api'
 import { sample } from 'lodash'
 import styled from 'styled-components'
@@ -20,47 +20,30 @@ import TextInput from './components/config/TextInput'
 
 const launcherBackgrounds = [LauncherBackground, LauncherBackground2]
 const Greetings = [
-    '😭 Real Market trading is destroying our game 😭',
-    'Gala, if you see this, hire me',
-    'I am a bot, I am a bot, I am a bot',
-    'Gala vs Computer Vision',
-    'Not a virus, guaranteed',
+    '挂机一时爽，一直挂机一直爽',
+    'Gala 要是看到这条，就雇了我吧',
+    '我不是机器人，我是机器人',
+    '保证不是病毒',
     'Neuz.exe',
-    'Remember sunkist?',
-    'Select individuals only',
-    '...you do the math',
-    'Vampire Empire',
-    'Certified Based',
-    'I am not a bot',
-    'My french fries are made out of Gpotatoes',
-    'Plz don\'t kill me',
-    'Plz don\'t ban me',
-    'Gib me a star on github',
-    'Why p2w when you can bot',
-    'Chad botter vs virgin p2w user',
-    'Do you even grind bro',
-    'Why waste time with farming',
-    'Why waste time when you can bot',
-    'Bot & Chill',
-    'Don\'t like bots? Don\t play the game',
-    'Ich chill bei Bangs',
-    'Gala sued me for my pserver 😥',
-    'Can be bought with 0 BTC 👍',
-    'Free is always best',
-    '/say me',
-    'MPL licensed',
-    'Can you buff me pls?',
-    'Plz res me',
-    'Smoke ants',
-    'Madrigal Street Capital',
-    'Madrigal Street Cartel',
-    'Madrigal Street Casino',
-    'Madrigal Street Chinafarming',
-    'Madrigal Street Cocaine',
-    'Madrigal Skooma Cartel',
-    'Do you remember CFlyff',
-    'Sly was here',
-    '夢想飛飛',
+    '还记得 sunkist 吗',
+    '佛系打金中',
+    '专业代练（划掉）',
+    '点个 star 呗',
+    '为什么要氪金，挂机不香吗',
+    '肝帝 vs 氪佬',
+    '你今天刷怪了吗',
+    '别封我号啊',
+    '求大佬带飞',
+    '求复活',
+    '马德里加尔街资本',
+    '马德里加尔街卡特尔',
+    '还记得 CFlyff 吗',
+    'MPL 开源协议',
+    '自动战斗，快乐摸鱼',
+    '挂机使我快乐',
+    '梦想飞飞',
+    '打金人的浪漫',
+    '氪金不如挂机',
 ]
 
 type Props = {
@@ -73,8 +56,6 @@ const Launcher = ({ className }: Props) => {
     const greeting = useMemo(() => sample(Greetings), []);
 
     const [currentVersion, setCurrentVersion] = useState("NaN")
-    const lastVersion = useRef("NaN")
-    const updateModal = useModal()
 
     const newProfileModal = useModal()
     const renameProfileModal = useModal()
@@ -99,19 +80,6 @@ const Launcher = ({ className }: Props) => {
         }
     }
 
-    const getData=()=>{
-        fetch('https://raw.githubusercontent.com/MadrigalStreetCartel/neuz/main/updater.json')
-        .then(function(response){
-            return response.json();
-        })
-        .then(function(myJson) {
-            if(currentVersion !== "NaN" && myJson.version !== currentVersion) {
-                lastVersion.current = myJson.version
-                updateModal.open()
-            }
-        });
-    }
-
     if (currentVersion === "NaN") {
         getVersion().then((value) => {
             setCurrentVersion(value)
@@ -126,27 +94,14 @@ const Launcher = ({ className }: Props) => {
     }
 
     useEffect(() => {
-        getData()
         refreshProfiles()
 
     },[currentVersion])
 
     return (
             <div className={className}>
-                <YesNoModal isShowing={updateModal.isShown} hide={updateModal.close}
-                    title={<h4>Update available!</h4>}
-                    body={
-                        <>
-                            <p>Version V{lastVersion.current} is available! </p>
-                            <p>You're currently using V{currentVersion}.</p>
-                            <p>Do you want to open download page ?</p>
-                        </>
-                    }
-                    onYes={() => {window.open("https://github.com/MadrigalStreetCartel/neuz/releases/Neuz-v" + lastVersion.current)}}
-                />
-
                 <YesNoModal isShowing={newProfileModal.isShown} hide={newProfileModal.close}
-                    title={<h4>New profile</h4>}
+                    title={<h4>新建配置</h4>}
                     body={
                         <TextInput unit='#' value={newProfile} onChange={(value) => {setNewProfile(value.toUpperCase()) }} />
                     }
@@ -160,7 +115,7 @@ const Launcher = ({ className }: Props) => {
                 />
 
                 <YesNoModal isShowing={renameProfileModal.isShown} hide={renameProfileModal.close}
-                    title={<h4>Rename profile {profileId?.replaceAll("profile_", "")}</h4>}
+                    title={<h4>重命名配置 {profileId?.replaceAll("profile_", "")}</h4>}
                     body={
                         <TextInput unit='#' value={newProfile} onChange={(value) => {setNewProfile(value) }} />
                     }
@@ -174,7 +129,7 @@ const Launcher = ({ className }: Props) => {
                 />
 
                 <YesNoModal isShowing={copyProfileModal.isShown} hide={copyProfileModal.close}
-                    title={<h4>Profile {profileId?.replaceAll("profile_", "")} will be copied</h4>}
+                    title={<h4>将复制配置 {profileId?.replaceAll("profile_", "")}</h4>}
                     body={
                         <TextInput unit='#' value={newProfile} onChange={(value) => {setNewProfile(value) }} />
                     }
@@ -188,9 +143,9 @@ const Launcher = ({ className }: Props) => {
                 />
 
                 <YesNoModal isShowing={delProfileModal.isShown} hide={delProfileModal.close}
-                    title={<h4>Do you want to delete this profile ?</h4>}
+                    title={<h4>确定要删除该配置吗？</h4>}
                     body={
-                       <h3>This action cant be undone</h3>
+                       <h3>此操作不可撤销</h3>
                     }
                     onYes={() => {
                         invoke('remove_profile', {profileId: profileId})
@@ -201,9 +156,9 @@ const Launcher = ({ className }: Props) => {
                 />
 
                 <YesNoModal isShowing={resetProfileModal.isShown} hide={resetProfileModal.close}
-                    title={<h4>Do you want to reset this profile ?</h4>}
+                    title={<h4>确定要重置该配置吗？</h4>}
                     body={
-                       <h3>This action cant be undone</h3>
+                       <h3>此操作不可撤销</h3>
                     }
                     onYes={() => {
                         invoke('reset_profile', {profileId: profileId})
@@ -220,16 +175,16 @@ const Launcher = ({ className }: Props) => {
                             <ConfigTable>
                                 <ConfigTableRow
                                     layout="v"
-                                    label={<ConfigLabel name={`Profiles${profileId !== "" ? ` | Current : ${profileId}` :""}`} helpText={"Select/create/edit/copy you're profiles."} />}
+                                    label={<ConfigLabel name={`配置列表${profileId !== "" ? ` | 当前：${profileId}` :""}`} helpText={"选择 / 新建 / 编辑 / 复制你的配置。"} />}
                                     item={
                                         <>
                                             <div style={{display: "inline"}}>
-                                                <div className="btn m" onClick={newProfileModal.open}>New</div>
-                                                <div className="btn m" onClick={()=> {profileId !== null && renameProfileModal.open()}}>Rename</div>
-                                                <div className="btn m" onClick={()=> {profileId !== null && copyProfileModal.open()}}>Copy</div>
-                                                <div className="btn m" onClick={()=> {profileId !== null && delProfileModal.open()}}>Remove</div>
-                                                <div className="btn m" onClick={()=> {profileId !== null && resetProfileModal.open()}}>Reset</div>
-                                                <div className="btn m" onClick={refreshProfiles}>Refresh</div>
+                                                <div className="btn m" onClick={newProfileModal.open}>新建</div>
+                                                <div className="btn m" onClick={()=> {profileId !== null && renameProfileModal.open()}}>重命名</div>
+                                                <div className="btn m" onClick={()=> {profileId !== null && copyProfileModal.open()}}>复制</div>
+                                                <div className="btn m" onClick={()=> {profileId !== null && delProfileModal.open()}}>删除</div>
+                                                <div className="btn m" onClick={()=> {profileId !== null && resetProfileModal.open()}}>重置</div>
+                                                <div className="btn m" onClick={refreshProfiles}>刷新</div>
                                             </div>
 
                                             <table id="profiles">
@@ -250,13 +205,13 @@ const Launcher = ({ className }: Props) => {
                             </ConfigTable>
                         </ConfigPanel>
 
-                        <div className="btn" onClick={launch}>Play</div>
+                        <div className="btn" onClick={launch}>开始</div>
                     </div>
                 )}
                 {isLaunched && (
                     <>
                         <ProfileDisplay profileId={profileId?? ""} />
-                        <MissionControl currentVersion={currentVersion} lastVersion={lastVersion.current} />
+                        <MissionControl currentVersion={currentVersion} />
                     </>
                 )}
 

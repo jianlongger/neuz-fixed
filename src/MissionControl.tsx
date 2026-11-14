@@ -107,10 +107,10 @@ const MissionControl = ({ className, lastVersion, currentVersion }: Props) => {
 
                 <div className="footer">
                     <div className="sm footerCombinedBtn">
-                        {!isNil(config?.mode) && <div className="btn sm" onClick={toogleLightMode}>Compact</div>}
-                        {!isNil(config?.mode) && <div className="btn sm" onClick={() => {invoke("focus_client")}}>Focus</div>}
+                        {!isNil(config?.mode) && <div className="btn sm" onClick={toogleLightMode}>精简</div>}
+                        {!isNil(config?.mode) && <div className="btn sm" onClick={() => {invoke("focus_client")}}>聚焦</div>}
                     </div>
-                    {!isNil(config?.mode) && <div className="btn" onClick={setRunningToggle}>{config?.is_running ? 'Disengage' : 'Engage'}</div>}
+                    {!isNil(config?.mode) && <div className="btn" onClick={setRunningToggle}>{config?.is_running ? '停止' : '启动'}</div>}
                 </div>
                 <Footer currentVersion={currentVersion} lastVersion={lastVersion} />
             </div>}
@@ -118,14 +118,14 @@ const MissionControl = ({ className, lastVersion, currentVersion }: Props) => {
             {lightMode &&
                 <div className="lightmode">
                        {config?.mode !== "AutoShout" && <div className={"stateDisplay"}>
-                            State: {config?.mode === "Farming"? farmingState : supportState}
+                            状态：{config?.mode === "Farming"? farmingState : supportState}
                         </div>}
                     <div className="btn sm" id="back" onClick={toogleLightMode}>{"<-"}</div>
-                    <div className="btn sm" onClick={() => {invoke("focus_client")}}>Focus</div>
+                    <div className="btn sm" onClick={() => {invoke("focus_client")}}>聚焦</div>
                     {config?.mode === "Farming" && <div className="btn sm" onClick={handleToggle}>
                     {config?.farming_config.is_stop_fighting? "🛑" : "✅" }🎯
                     </div>}
-                    <div className="btn sm" onClick={setRunningToggle}>{config?.is_running ? 'Disengage' : 'Engage'}</div>
+                    <div className="btn sm" onClick={setRunningToggle}>{config?.is_running ? '停止' : '启动'}</div>
                 </div>
             }
             {/* <div className="container" style={{ width: `${imageData.width}px`, height: `${imageData.height}px` }}>
