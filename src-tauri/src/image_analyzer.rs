@@ -490,3 +490,25 @@ impl ImageAnalyzer {
         }
     }
 }
+
+/// Returns the actually-scanned rectangle (x, y, w, h) in captured-image pixel
+/// coordinates for the given image size and farming config. This is exactly the
+/// region the detector iterates over, so it is the rectangle that should be
+/// outlined on the game window / screenshot to show the user what is scanned.
+pub fn scan_region_rect(
+    img_w: u32,
+    img_h: u32,
+    cfg: &FarmingConfig,
+) -> (u32, u32, u32, u32) {
+    let x0 = cfg.scan_margin_left();
+    let x1 = img_w.saturating_sub(cfg.scan_margin_right());
+    let y0 = IGNORE_AREA_TOP.saturating_add(cfg.scan_margin_top());
+    let y1 = img_h
+        .saturating_sub(IGNORE_AREA_BOTTOM)
+        .saturating_sub(cfg.scan_margin_bottom());
+    let x = x0;
+    let y = y0;
+    let w = x1.saturating_sub(x0);
+    let h = y1.saturating_sub(y0);
+    (x, y, w.max(1), h.max(1))
+}

@@ -10,6 +10,7 @@ import ColorSelector from '../config/ColorSelector'
 import SlotBar from '../SlotBar'
 import { createSlotBars, FarmingConfigModel } from '../../models/BotConfig'
 import { useEffect, useRef, useState } from 'react'
+import { invoke } from '@tauri-apps/api'
 import { FrontendInfoModel } from '../../models/FrontendInfo'
 import Modal from '../Modal'
 import useModal from '../utils/UseModal'
@@ -33,6 +34,10 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
     const debugWarningModal = useModal(debugModal)
     const onDeathModal = useModal(debugModal)
     const onAFKModal = useModal()
+
+    const scanRegionModal = useModal()
+    const [scanPreview, setScanPreview] = useState<{ b64: string, w: number, h: number } | null>(null)
+    const [scanError, setScanError] = useState<string | null>(null)
 
     const mobsNameDebugModal = useModal(debugModal)
     const mobsColorsDebugModal = useModal(mobsNameDebugModal)
@@ -247,6 +252,37 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
 
                     <ConfigTableRow
                         layout="v"
+                        label={<ConfigLabel name="扫描区域（框选）" helpText="对游戏画面截图并直接拖拽框选扫描范围，比手填边距直观；框选时绿色边框会实时显示在游戏窗口上回显。点“应用”自动换算成下方四个边距。" />}
+                        item={
+                            <div>
+                                <div
+                                    className="btn sm"
+                                    onClick={() => {
+                                        setScanError(null)
+                                        invoke('capture_client_preview').then((b64: any) => {
+                                            if (!b64) {
+                                                setScanError('无法截取游戏窗口，请先启动游戏（点“开始”）并确保游戏窗口已打开。')
+                                                return
+                                            }
+                                            const img = new Image()
+                                            img.onload = () => {
+                                                setScanPreview({ b64, w: img.naturalWidth, h: img.naturalHeight })
+                                                scanRegionModal.open()
+                                            }
+                                            img.onerror = () => setScanError('截图加载失败，请重试。')
+                                            img.src = 'data:image/png;base64,' + b64
+                                        }).catch(() => setScanError('截图失败，请确认游戏窗口已启动。'))
+                                    }}
+                                >框选扫描区域</div>
+                                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.85 }}>
+                                    当前边距 — 左 {config.scan_margin_left ?? 0} / 右 {config.scan_margin_right ?? 0} / 上 {config.scan_margin_top ?? 0} / 下 {config.scan_margin_bottom ?? 0}（像素）
+                                </div>
+                                {scanError && <div style={{ marginTop: 4, fontSize: 12, color: '#ff6b6b' }}>{scanError}</div>}
+                            </div>
+                        }
+                    />
+                    <ConfigTableRow
+                        layout="v"
                         label={<ConfigLabel name="扫描边距(上)" helpText="从画面顶部开始跳过多少像素再开始检测怪物，用于排除顶部血条/增益栏等 UI。0 = 不跳过。" />}
                         item={<NumericInput unit='px' min={0} max={1000} value={config.scan_margin_top ?? 0} onChange={value => onChange?.({ ...config, scan_margin_top: value })} />}
                     />
@@ -336,6 +372,34 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                 </ConfigTable>
             }/>
 
+            <Modal isShowing={scanRegionModal.isShown} hide={() => {
+                invoke('overlay_scan_region', { rect: null })
+                scanRegionModal.close()
+            }}
+                title={<h4>框选扫描区域</h4>} body={
+                    scanPreview ? <ScanRegionPicker
+                        b64={scanPreview.b64}
+                        imgW={scanPreview.w}
+                        imgH={scanPreview.h}
+                        onCancel={() => {
+                            invoke('overlay_scan_region', { rect: null })
+                            scanRegionModal.close()
+                        }}
+                        onConfirm={(rect) => {
+                            // rect is in captured-image (window) pixel coords.
+                            // Convert to the four scan margins. IGNORE_AREA_TOP=0 and
+                            // IGNORE_AREA_BOTTOM=110 on Windows (the only supported target).
+                            const left = Math.round(rect[0])
+                            const right = Math.max(0, Math.round(scanPreview.w - (rect[0] + rect[2])))
+                            const top = Math.max(0, Math.round(rect[1]))
+                            const bottom = Math.max(0, Math.round(scanPreview.h - 110 - (rect[1] + rect[3])))
+                            onChange?.({ ...config, scan_margin_left: left, scan_margin_right: right, scan_margin_top: top, scan_margin_bottom: bottom })
+                            scanRegionModal.close()
+                        }}
+                    /> : undefined
+                }
+            />
+
             <Modal isShowing={statsModal.isShown} hide={statsModal.close}
             title={<h4>统计</h4>} body={
                 <div className="stats">
@@ -421,3 +485,94 @@ export default styled(FarmingConfig)`
         text-align: center;
     }
 `
+
+// 在游戏截图（dataURL）上拖拽框选扫描区域。框选时通过 overlay_scan_region
+// 把绿框实时画回游戏窗口做回显。确认时回传 [x, y, w, h]（截图原始像素坐标）。
+const ScanRegionPicker = ({ b64, imgW, imgH, onConfirm, onCancel }: {
+    b64: string,
+    imgW: number,
+    imgH: number,
+    onConfirm: (rect: [number, number, number, number]) => void,
+    onCancel: () => void,
+}) => {
+    const imgRef = useRef<HTMLImageElement>(null)
+    const [sel, setSel] = useState<{ x: number, y: number, w: number, h: number } | null>(null)
+    const dragRef = useRef<{ sx: number, sy: number } | null>(null)
+    const lastSentRef = useRef<string>('')
+
+    const toNatural = (clientX: number, clientY: number) => {
+        const img = imgRef.current!
+        const r = img.getBoundingClientRect()
+        const scaleX = img.naturalWidth / r.width
+        const scaleY = img.naturalHeight / r.height
+        return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY }
+    }
+
+    const onDown = (e: any) => {
+        const p = toNatural(e.clientX, e.clientY)
+        dragRef.current = { sx: p.x, sy: p.y }
+        setSel({ x: p.x, y: p.y, w: 0, h: 0 })
+    }
+    const onMove = (e: any) => {
+        if (!dragRef.current) return
+        const p = toNatural(e.clientX, e.clientY)
+        const x = Math.min(dragRef.current.sx, p.x)
+        const y = Math.min(dragRef.current.sy, p.y)
+        const w = Math.abs(p.x - dragRef.current.sx)
+        const h = Math.abs(p.y - dragRef.current.sy)
+        const s = { x, y, w, h }
+        setSel(s)
+        const key = `${Math.round(x)},${Math.round(y)},${Math.round(w)},${Math.round(h)}`
+        if (key !== lastSentRef.current) {
+            lastSentRef.current = key
+            invoke('overlay_scan_region', { rect: [Math.round(x), Math.round(y), Math.round(w), Math.round(h)] })
+        }
+    }
+    const onUp = () => { dragRef.current = null }
+
+    const disp = () => {
+        if (!sel || !imgRef.current) return null
+        const img = imgRef.current
+        const r = img.getBoundingClientRect()
+        const scaleX = r.width / img.naturalWidth
+        const scaleY = r.height / img.naturalHeight
+        return { left: sel.x * scaleX, top: sel.y * scaleY, width: sel.w * scaleX, height: sel.h * scaleY }
+    }
+
+    const d = disp()
+    return (
+        <div>
+            <p style={{ fontSize: 12, opacity: 0.85 }}>
+                在下方游戏画面上按住鼠标拖拽，框出希望扫描的范围（应避开底部技能栏、顶部血条等 UI）。绿框会实时显示在游戏窗口里回显。
+            </p>
+            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', lineHeight: 0 }}>
+                <img
+                    ref={imgRef}
+                    src={'data:image/png;base64,' + b64}
+                    style={{ maxWidth: '100%', display: 'block', cursor: 'crosshair' }}
+                    draggable={false}
+                    onMouseDown={onDown}
+                    onMouseMove={onMove}
+                    onMouseUp={onUp}
+                    onMouseLeave={onUp}
+                />
+                {d && (
+                    <div style={{
+                        position: 'absolute', left: d.left, top: d.top, width: d.width, height: d.height,
+                        border: '3px solid #00e676', boxSizing: 'border-box', pointerEvents: 'none',
+                        background: 'rgba(0,230,118,0.08)'
+                    }} />
+                )}
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                <div className="btn sm" onClick={() => sel && onConfirm([sel.x, sel.y, sel.w, sel.h])}>应用</div>
+                <div className="btn sm" onClick={onCancel}>取消</div>
+            </div>
+            {sel && (
+                <div style={{ fontSize: 12, marginTop: 6, opacity: 0.85 }}>
+                    已选：X {Math.round(sel.x)} · Y {Math.round(sel.y)} · 宽 {Math.round(sel.w)} · 高 {Math.round(sel.h)}（原始像素，截图尺寸 {imgW}×{imgH}）
+                </div>
+            )}
+        </div>
+    )
+}

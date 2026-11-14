@@ -9,7 +9,9 @@ mod platform;
 mod utils;
 
 use std::{ fs, io, path::{ Path, PathBuf }, sync::Arc, time::Duration };
+use std::io::Cursor;
 use std::io::Write;
+use image::{ DynamicImage, ImageOutputFormat };
 
 use guard::guard;
 use ipc::FrontendInfo;
@@ -60,6 +62,79 @@ fn debug_log(msg: &str) {
     }
 }
 
+/// Capture the game ("client") window and return it as a base64 PNG, so the UI
+/// can show a real screenshot the user draws the scan region on.
+fn encode_window_capture_png(app_handle: &tauri::AppHandle) -> Option<String> {
+    let window = app_handle.get_window("client")?;
+    let window_id = platform::get_window_id(&window)?;
+    let provider = libscreenshot::get_window_capture_provider()?;
+    let image = provider.capture_window(window_id).ok()?;
+    let dyn_img = DynamicImage::ImageRgba8(image);
+    let mut buf: Vec<u8> = Vec::new();
+    {
+        let mut cursor = Cursor::new(&mut buf);
+        if dyn_img
+            .write_to(&mut cursor, ImageOutputFormat::Png)
+            .is_err()
+        {
+            return None;
+        }
+    }
+    Some(base64::encode(&buf))
+}
+
+/// Draw (or remove, when `rect` is None) a green outline of the scan region on
+/// the game window, so the user sees the active scan area live over the game.
+fn inject_scan_overlay(window: &Window, rect: Option<(u32, u32, u32, u32)>) {
+    let rect_json = match rect {
+        Some((x, y, w, h)) => format!("[{},{},{},{}]", x, y, w, h),
+        None => "null".to_string(),
+    };
+    let js = format!(
+        "(() => {{ \
+            var el = document.getElementById('neuz-scan-overlay'); \
+            var r = {rect_json}; \
+            if (r === null) {{ if (el) el.remove(); return; }} \
+            if (!el) {{ \
+                el = document.createElement('div'); \
+                el.id = 'neuz-scan-overlay'; \
+                (document.body || document.documentElement).appendChild(el); \
+            }} \
+            el.style.position = 'fixed'; \
+            el.style.left = r[0] + 'px'; \
+            el.style.top = r[1] + 'px'; \
+            el.style.width = r[2] + 'px'; \
+            el.style.height = r[3] + 'px'; \
+            el.style.border = '3px solid #00e676'; \
+            el.style.boxSizing = 'border-box'; \
+            el.style.pointerEvents = 'none'; \
+            el.style.zIndex = '2147483647'; \
+            el.style.background = 'rgba(0,230,118,0.08)'; \
+        }}});"
+    );
+    let _ = window.eval(&js);
+}
+
+#[tauri::command]
+fn capture_client_preview(
+    _state: tauri::State<AppState>,
+    app_handle: tauri::AppHandle,
+) -> Option<String> {
+    encode_window_capture_png(&app_handle)
+}
+
+#[tauri::command]
+fn overlay_scan_region(
+    rect: Option<[u32; 4]>,
+    _state: tauri::State<AppState>,
+    app_handle: tauri::AppHandle,
+) {
+    if let Some(window) = app_handle.get_window("client") {
+        let r = rect.map(|a| (a[0], a[1], a[2], a[3]));
+        inject_scan_overlay(&window, r);
+    }
+}
+
 fn main() {
     // Generate tauri context
     let context = tauri::generate_context!();
@@ -94,7 +169,9 @@ fn main() {
                 copy_profile,
                 reset_profile,
                 focus_client,
-                toggle_main_size
+                toggle_main_size,
+                capture_client_preview,
+                overlay_scan_region
             ]
         )
         .run(context)
@@ -430,6 +507,28 @@ fn start_bot(profile_id: String, state: tauri::State<AppState>, app_handle: taur
                     ).clone()
                 );
                 send_config(config);
+
+                // Echo the configured scan region onto the game window as a live
+                // overlay so the user always sees what area is being scanned.
+                if let Some(client_window) = app_handle.get_window("client") {
+                    if let Ok(size) = client_window.inner_size() {
+                        let fc = config.farming_config();
+                        let rect = crate::image_analyzer::scan_region_rect(
+                            size.width as u32,
+                            size.height as u32,
+                            fc,
+                        );
+                        let restricted = fc.scan_margin_left() > 0
+                            || fc.scan_margin_right() > 0
+                            || fc.scan_margin_top() > 0
+                            || fc.scan_margin_bottom() > 0;
+                        inject_scan_overlay(
+                            &client_window,
+                            if restricted { Some(rect) } else { None },
+                        );
+                    }
+                }
+
                 last_config_change_id = config.change_id();
 
                 // Update behaviors
