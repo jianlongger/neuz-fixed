@@ -9,6 +9,8 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use slog::Logger;
 use tauri::Window;
 
+use image::GenericImageView;
+
 use crate::{
     data::{point_selector, Bounds, ClientStats, MobType, Point, PointCloud, Target, TargetType},
     ipc::FarmingConfig,
@@ -184,6 +186,47 @@ impl ImageAnalyzer {
         perm.iter().all(|&(a, b)| matches_inner(a, b))
     }
 
+    /// Same as `pixel_matches` but against a list of reference colors.
+    #[inline(always)]
+    fn pixel_matches_any(c: &[u8; 4], colors: &[[u8; 3]], tolerance: u8) -> bool {
+        for r in colors {
+            if Self::pixel_matches(c, r, tolerance) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Whether a red or green health bar is rendered within `margin` px around
+    /// the given bounds (above or below the name). Used as a shape-confirmation
+    /// filter so UI elements sharing the monster name color are not misread.
+    fn has_health_bar_near(&self, bounds: &Bounds, margin: u32) -> bool {
+        let image = self.image.as_ref().unwrap();
+        let (w, h) = (image.width(), image.height());
+        let x0 = bounds.x.saturating_sub(margin).min(w.saturating_sub(1));
+        let x1 = (bounds.x + bounds.w + margin).min(w.saturating_sub(1));
+        let y0 = bounds.y.saturating_sub(margin).min(h.saturating_sub(1));
+        let y1 = (bounds.y + bounds.h + margin).min(h.saturating_sub(1));
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                if Self::is_health_bar_color(&image.get_pixel(x, y).0) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// A red or green health-bar pixel: one channel clearly dominant over the
+    /// others (e.g. full-HP red, low-HP dark red, or a green bar).
+    #[inline(always)]
+    fn is_health_bar_color(px: &[u8; 4]) -> bool {
+        let (r, g, b) = (px[0] as i16, px[1] as i16, px[2] as i16);
+        let red = r > 110 && g < r - 35 && b < r - 35;
+        let green = g > 110 && r < g - 35 && b < g - 35;
+        red || green
+    }
+
     pub fn identify_mobs(&self, config: &FarmingConfig) -> Vec<Target> {
         let _timer = Timer::start_new("identify_mobs");
 
@@ -192,26 +235,17 @@ impl ImageAnalyzer {
         let mut mob_coords_agg: Vec<Point> = Vec::default();
         let mut mob_coords_violet: Vec<Point> = Vec::default();
 
-        // Reference colors
-        let ref_color_pas_wrapped: [Option<u8>; 3] = config.passive_mobs_colors(); // Passive mobs 234, 234, 149
-        let ref_color_agg_wrapped: [Option<u8>; 3] = config.aggressive_mobs_colors(); // Aggro mobs 179, 23, 23
-
-        let ref_color_violet_wrapped: [Option<u8>; 3] = config.violet_mobs_colors(); // Aggro mobs 179, 23, 23
-        let ref_color_pas: [u8; 3] = [
-            ref_color_pas_wrapped[0].unwrap_or(234),
-            ref_color_pas_wrapped[1].unwrap_or(234),
-            ref_color_pas_wrapped[2].unwrap_or(149),
-        ];
-        let ref_color_agg: [u8; 3] = [
-            ref_color_agg_wrapped[0].unwrap_or(179),
-            ref_color_agg_wrapped[1].unwrap_or(23),
-            ref_color_agg_wrapped[2].unwrap_or(23),
-        ];
-        let ref_color_violet: [u8; 3] = [
-            ref_color_violet_wrapped[0].unwrap_or(182),
-            ref_color_violet_wrapped[1].unwrap_or(144),
-            ref_color_violet_wrapped[2].unwrap_or(146),
-        ];
+        // Reference colors (now a list per category for multi-color support)
+        let pas_colors: Vec<[u8; 3]> = config.passive_mobs_colors_list();
+        let agg_colors: Vec<[u8; 3]> = config.aggressive_mobs_colors_list();
+        let violet_colors: Vec<[u8; 3]> = {
+            let v = config.violet_mobs_colors();
+            vec![[
+                v[0].unwrap_or(182),
+                v[1].unwrap_or(144),
+                v[2].unwrap_or(146),
+            ]]
+        };
 
         // Collect pixel clouds
         struct MobPixel(u32, u32, TargetType);
@@ -259,20 +293,24 @@ impl ImageAnalyzer {
                         // outside the horizontal scan region (UI bands)
                         continue;
                     }
-                    if Self::pixel_matches(&px.0, &ref_color_pas, config.passive_tolerence()) {
-                        drop(snd.try_send(MobPixel(x, y, TargetType::Mob(MobType::Passive))));
-                    } else if Self::pixel_matches(
+                    let mut matched: Option<TargetType> = None;
+                    if Self::pixel_matches_any(&px.0, &pas_colors, config.passive_tolerence()) {
+                        matched = Some(TargetType::Mob(MobType::Passive));
+                    } else if Self::pixel_matches_any(
                         &px.0,
-                        &ref_color_agg,
+                        &agg_colors,
                         config.aggressive_tolerence(),
                     ) {
-                        drop(snd.try_send(MobPixel(x, y, TargetType::Mob(MobType::Aggressive))));
-                    } else if Self::pixel_matches(
+                        matched = Some(TargetType::Mob(MobType::Aggressive));
+                    } else if Self::pixel_matches_any(
                         &px.0,
-                        &ref_color_violet,
+                        &violet_colors,
                         config.violet_tolerence(),
                     ) {
-                        drop(snd.try_send(MobPixel(x, y, TargetType::Mob(MobType::Violet))));
+                        matched = Some(TargetType::Mob(MobType::Violet));
+                    }
+                    if let Some(mt) = matched {
+                        drop(snd.try_send(MobPixel(x, y, mt)));
                     }
                 }
             });
@@ -286,12 +324,12 @@ impl ImageAnalyzer {
         }
 
         // Categorize mobs
-        let mobs_pas = Self::merge_cloud_into_mobs(
+        let mut mobs_pas = Self::merge_cloud_into_mobs(
             Some(config),
             &PointCloud::new(mob_coords_pas),
             TargetType::Mob(MobType::Passive),
         );
-        let mobs_agg = Self::merge_cloud_into_mobs(
+        let mut mobs_agg = Self::merge_cloud_into_mobs(
             Some(config),
             &PointCloud::new(mob_coords_agg),
             TargetType::Mob(MobType::Aggressive),
@@ -301,6 +339,15 @@ impl ImageAnalyzer {
             &PointCloud::new(mob_coords_violet),
             TargetType::Mob(MobType::Violet),
         );
+
+        // T2: optional shape confirmation — only keep mobs that have a health
+        // bar (red or green) rendered near the name, rejecting UI elements that
+        // happen to share the monster name color.
+        if config.require_health_bar() {
+            let margin = config.health_bar_margin();
+            mobs_pas.retain(|m| self.has_health_bar_near(&m.bounds, margin));
+            mobs_agg.retain(|m| self.has_health_bar_near(&m.bounds, margin));
+        }
 
         // Return all mobs
         Vec::from_iter(mobs_agg.into_iter().chain(mobs_pas))

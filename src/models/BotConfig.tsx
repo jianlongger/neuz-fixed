@@ -97,6 +97,12 @@ export type FarmingConfigModel = Partial<{
     aggressive_mobs_colors: number[];
     aggressive_tolerence: number;
 
+    passive_mobs_colors_extra: number[][];
+    aggressive_mobs_colors_extra: number[][];
+
+    require_health_bar: boolean;
+    health_bar_margin: number;
+
     is_stop_fighting: boolean;
     prevent_already_attacked: boolean;
     prioritize_aggro: boolean;

@@ -46,6 +46,10 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
         'passive_tolerence': 5,
         'aggressive_mobs_colors': [179, 23, 23],
         'aggressive_tolerence': 10,
+        'passive_mobs_colors_extra': [],
+        'aggressive_mobs_colors_extra': [],
+        'require_health_bar': false,
+        'health_bar_margin': 30,
         'obstacle_avoidance_cooldown': 3000,
         'obstacle_avoidance_max_try': 3,
         'min_mobs_name_width': 15,
@@ -136,6 +140,36 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                     layout="v"
                         label={<ConfigLabel name="" helpText="" />}
                         item={<button onClick={()=>colorsRefResetter[selectedMobType.current]()}>重置</button>}
+                    />
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="附加颜色" helpText="若同一区域有其它名字颜色的怪物（如红怪、绿怪），可在这里追加颜色样本，每行一个。留空则只使用上方主颜色。" />}
+                        item={
+                            <div>
+                                {((selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).map((c, i) => (
+                                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                        <ColorSelector value={c} onChange={v => {
+                                            const key = selectedMobType.current === 0 ? 'passive_mobs_colors_extra' : 'aggressive_mobs_colors_extra';
+                                            const arr = (selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).slice();
+                                            arr[i] = v;
+                                            onChange?.({ ...config, [key]: arr });
+                                        }} />
+                                        <button onClick={() => {
+                                            const key = selectedMobType.current === 0 ? 'passive_mobs_colors_extra' : 'aggressive_mobs_colors_extra';
+                                            const arr = (selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).slice();
+                                            arr.splice(i, 1);
+                                            onChange?.({ ...config, [key]: arr });
+                                        }}>×</button>
+                                    </div>
+                                ))}
+                                <button onClick={() => {
+                                    const key = selectedMobType.current === 0 ? 'passive_mobs_colors_extra' : 'aggressive_mobs_colors_extra';
+                                    const arr = (selectedMobType.current === 0 ? (config.passive_mobs_colors_extra ?? []) : (config.aggressive_mobs_colors_extra ?? [])).slice();
+                                    arr.push([255, 0, 0]);
+                                    onChange?.({ ...config, [key]: arr });
+                                }}>+ 添加颜色</button>
+                            </div>
+                        }
                     />
                 </ConfigTable>
             }/>
@@ -238,6 +272,17 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         layout="v"
                         label={<ConfigLabel name="优先主动怪" helpText="选择目标时优先主动怪。" />}
                         item={<BooleanSlider value={config.prioritize_aggro ?? true} onChange={value => onChange?.({ ...config, prioritize_aggro: value })} />}
+                    />
+
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="仅锁定带血条的怪物" helpText="开启后，只有名字颜色附近出现红/绿血条的色块才判定为怪，可大幅减少把 UI / 特效误当成怪。若发现怪不再被识别，请关闭此项。" />}
+                        item={<BooleanSlider value={config.require_health_bar ?? false} onChange={value => onChange?.({ ...config, require_health_bar: value })} />}
+                    />
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="血条搜索范围(像素)" helpText="在怪物名字上/下方多少像素范围内寻找血条。默认 30。" />}
+                        item={<NumericInput unit='px' min={0} max={200} value={config.health_bar_margin ?? 30} onChange={value => onChange?.({ ...config, health_bar_margin: value })} />}
                     />
 
                 </ConfigTable>
