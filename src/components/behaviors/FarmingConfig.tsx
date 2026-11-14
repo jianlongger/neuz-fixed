@@ -53,6 +53,10 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
         'circle_pattern_rotation_duration': 30,
         'min_hp_attack': 30,
         'farm_radius': 0,
+        'scan_margin_top': 0,
+        'scan_margin_bottom': 0,
+        'scan_margin_left': 0,
+        'scan_margin_right': 0,
         'prevent_already_attacked': true,
         'prioritize_aggro': true,
         'interval_between_buffs': 2000,
@@ -195,6 +199,27 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         layout="v"
                         label={<ConfigLabel name="刷怪范围(像素)" helpText="以角色当前所在位置（开始刷怪时的位置）为圆心，仅在该半径内选取并攻击怪物，并停止自动走位巡逻，避免角色跑远。0 = 不限制。" />}
                         item={<NumericInput unit='px' min={0} max={2000} value={config.farm_radius ?? 0} onChange={value => onChange?.({ ...config, farm_radius: value })} />}
+                    />
+
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="扫描边距(上)" helpText="从画面顶部开始跳过多少像素再开始检测怪物，用于排除顶部血条/增益栏等 UI。0 = 不跳过。" />}
+                        item={<NumericInput unit='px' min={0} max={1000} value={config.scan_margin_top ?? 0} onChange={value => onChange?.({ ...config, scan_margin_top: value })} />}
+                    />
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="扫描边距(下)" helpText="从画面底部向上跳过多少像素，用于排除底部技能栏等 UI。0 = 不跳过。" />}
+                        item={<NumericInput unit='px' min={0} max={1000} value={config.scan_margin_bottom ?? 0} onChange={value => onChange?.({ ...config, scan_margin_bottom: value })} />}
+                    />
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="扫描边距(左)" helpText="从画面左侧开始跳过多少像素，用于排除左侧聊天/队伍栏等 UI。0 = 不跳过。" />}
+                        item={<NumericInput unit='px' min={0} max={1000} value={config.scan_margin_left ?? 0} onChange={value => onChange?.({ ...config, scan_margin_left: value })} />}
+                    />
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="扫描边距(右)" helpText="从画面右侧向内跳过多少像素，用于排除右侧小地图等 UI。0 = 不跳过。" />}
+                        item={<NumericInput unit='px' min={0} max={1000} value={config.scan_margin_right ?? 0} onChange={value => onChange?.({ ...config, scan_margin_right: value })} />}
                     />
 
                     <ConfigTableRow

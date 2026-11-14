@@ -166,6 +166,16 @@ pub struct FarmingConfig {
     /// obstacle escape) so the character stays in a fixed area.
     farm_radius: Option<u32>,
 
+    /// Scan region margins (pixels). 0 means no restriction on that side.
+    /// Restricting the scanned area to the play viewport (excluding the skill
+    /// bar, chat, minimap, teammate bars, etc.) shrinks the pixel search,
+    /// speeding up mob detection and cutting false positives from UI elements
+    /// that share the monster name colors.
+    scan_margin_top: Option<u32>,
+    scan_margin_bottom: Option<u32>,
+    scan_margin_left: Option<u32>,
+    scan_margin_right: Option<u32>,
+
     /// Disable farming
     farming_enabled: Option<bool>,
 
@@ -225,6 +235,19 @@ impl FarmingConfig {
 
     pub fn farm_radius(&self) -> u32 {
         self.farm_radius.unwrap_or(0)
+    }
+
+    pub fn scan_margin_top(&self) -> u32 {
+        self.scan_margin_top.unwrap_or(0)
+    }
+    pub fn scan_margin_bottom(&self) -> u32 {
+        self.scan_margin_bottom.unwrap_or(0)
+    }
+    pub fn scan_margin_left(&self) -> u32 {
+        self.scan_margin_left.unwrap_or(0)
+    }
+    pub fn scan_margin_right(&self) -> u32 {
+        self.scan_margin_right.unwrap_or(0)
     }
 
     pub fn obstacle_avoidance_cooldown(&self) -> u128 {

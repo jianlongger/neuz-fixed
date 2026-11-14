@@ -85,6 +85,10 @@ export type FarmingConfigModel = Partial<{
     on_demand_pet: boolean,
     use_attack_skills: boolean,
     farm_radius: number,
+    scan_margin_top: number,
+    scan_margin_bottom: number,
+    scan_margin_left: number,
+    scan_margin_right: number,
     slot_bars: SlotBars,
     circle_pattern_rotation_duration: number,
 

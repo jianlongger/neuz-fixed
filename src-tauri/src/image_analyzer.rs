@@ -225,14 +225,28 @@ impl ImageAnalyzer {
         // pixels than pixels), so nothing is dropped either. This mirrors how
         // `pixel_detection` above already avoids the same deadlock.
         let image = self.image.as_ref().unwrap();
-        let capacity = image.width() as usize * image.height() as usize;
+        let img_w = image.width();
+        let img_h = image.height();
+
+        // T1: restrict the scanned area to the play viewport using the
+        // user-configured margins (0 = no restriction on that side). This skips
+        // UI bands (skill bar, chat, minimap, teammate bars) so we process fewer
+        // pixels -> faster detection and fewer false positives.
+        let min_scan_x = config.scan_margin_left();
+        let max_scan_x = img_w.saturating_sub(config.scan_margin_right());
+        let min_scan_y = IGNORE_AREA_TOP.saturating_add(config.scan_margin_top());
+        let max_scan_y = img_h
+            .saturating_sub(IGNORE_AREA_BOTTOM)
+            .saturating_sub(config.scan_margin_bottom());
+
+        let capacity = img_w as usize * img_h as usize;
         let (snd, recv) = sync_channel::<MobPixel>(capacity);
         image
             .enumerate_rows()
             .par_bridge()
             .for_each(move |(y, row)| {
-                #[allow(clippy::absurd_extreme_comparisons)] // not always 0 (macOS)
-                if y <= IGNORE_AREA_TOP || y > image.height() - IGNORE_AREA_BOTTOM {
+                // Skip rows outside the configured scan region
+                if y <= min_scan_y || y > max_scan_y {
                     return;
                 }
                 for (x, _, px) in row {
@@ -240,6 +254,9 @@ impl ImageAnalyzer {
                         return;
                     } else if x <= 250 && y <= 110 {
                         // avoid detect the health bar as a monster
+                        continue;
+                    } else if x < min_scan_x || x > max_scan_x {
+                        // outside the horizontal scan region (UI bands)
                         continue;
                     }
                     if Self::pixel_matches(&px.0, &ref_color_pas, config.passive_tolerence()) {
