@@ -199,13 +199,6 @@ pub struct FarmingConfig {
     /// Extra aggressive mob color samples (additive to `aggressive_mobs_colors`).
     aggressive_mobs_colors_extra: Option<Vec<[u8; 3]>>,
 
-    /// Require a (red/green) health bar near the detected name before counting
-    /// it as a mob. Strong false-positive filter for UI that shares the monster
-    /// name color.
-    require_health_bar: Option<bool>,
-    /// How far (px) below/above the name to look for the health bar.
-    health_bar_margin: Option<u32>,
-
     obstacle_avoidance_cooldown: Option<u64>,
     obstacle_avoidance_max_try: Option<u32>,
 
@@ -336,14 +329,6 @@ impl FarmingConfig {
             }
         }
         v
-    }
-
-    pub fn require_health_bar(&self) -> bool {
-        self.require_health_bar.unwrap_or(false)
-    }
-
-    pub fn health_bar_margin(&self) -> u32 {
-        self.health_bar_margin.unwrap_or(30)
     }
 
     pub fn slot_bars(&self) -> Vec<SlotBar> {

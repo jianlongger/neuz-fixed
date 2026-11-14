@@ -197,36 +197,6 @@ impl ImageAnalyzer {
         false
     }
 
-    /// Whether a red or green health bar is rendered within `margin` px around
-    /// the given bounds (above or below the name). Used as a shape-confirmation
-    /// filter so UI elements sharing the monster name color are not misread.
-    fn has_health_bar_near(&self, bounds: &Bounds, margin: u32) -> bool {
-        let image = self.image.as_ref().unwrap();
-        let (w, h) = (image.width(), image.height());
-        let x0 = bounds.x.saturating_sub(margin).min(w.saturating_sub(1));
-        let x1 = (bounds.x + bounds.w + margin).min(w.saturating_sub(1));
-        let y0 = bounds.y.saturating_sub(margin).min(h.saturating_sub(1));
-        let y1 = (bounds.y + bounds.h + margin).min(h.saturating_sub(1));
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                if Self::is_health_bar_color(&image.get_pixel(x, y).0) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// A red or green health-bar pixel: one channel clearly dominant over the
-    /// others (e.g. full-HP red, low-HP dark red, or a green bar).
-    #[inline(always)]
-    fn is_health_bar_color(px: &[u8; 4]) -> bool {
-        let (r, g, b) = (px[0] as i16, px[1] as i16, px[2] as i16);
-        let red = r > 110 && g < r - 35 && b < r - 35;
-        let green = g > 110 && r < g - 35 && b < g - 35;
-        red || green
-    }
-
     pub fn identify_mobs(&self, config: &FarmingConfig) -> Vec<Target> {
         let _timer = Timer::start_new("identify_mobs");
 
@@ -339,31 +309,6 @@ impl ImageAnalyzer {
             &PointCloud::new(mob_coords_violet),
             TargetType::Mob(MobType::Violet),
         );
-
-        // T2: optional shape confirmation — only keep mobs that have a health
-        // bar (red or green) rendered near the name, rejecting UI elements that
-        // happen to share the monster name color.
-        if config.require_health_bar() {
-            let margin = config.health_bar_margin();
-            let pas_filtered: Vec<Target> = mobs_pas
-                .iter()
-                .filter(|m| self.has_health_bar_near(&m.bounds, margin))
-                .cloned()
-                .collect();
-            let agg_filtered: Vec<Target> = mobs_agg
-                .iter()
-                .filter(|m| self.has_health_bar_near(&m.bounds, margin))
-                .cloned()
-                .collect();
-            // 兜底：血条二次确认若把怪全部过滤光，说明判定过严（野外未选中的
-            // 怪大多不显示血条）。此时回退到不过滤的结果，避免该开关被打开后
-            // 静默停用自动打怪。只要还剩任意一只怪就采用过滤后的结果（过滤仍
-            // 能剔除部分 UI 误判），仅当过滤后一只不剩才回退。
-            if !(pas_filtered.is_empty() && agg_filtered.is_empty()) {
-                mobs_pas = pas_filtered;
-                mobs_agg = agg_filtered;
-            }
-        }
 
         // Return all mobs
         Vec::from_iter(mobs_agg.into_iter().chain(mobs_pas))
