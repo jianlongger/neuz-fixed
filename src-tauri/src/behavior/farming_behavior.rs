@@ -614,10 +614,18 @@ impl FarmingBehavior<'_> {
         mob: Target,
         image: &mut ImageAnalyzer
     ) -> State {
-        if image.client_stats.target_on_screen && image.client_stats.target_is_mover {
-            slog::debug!(self.logger, "Target is not a NPC"; "target_on_screen" => image.client_stats.target_on_screen, "target_is_mover" => image.client_stats.target_is_mover);
+        // 进入攻击状态的条件：只要「已有目标被选中」即可。
+        // 原逻辑要求 `target_is_mover`（目标 MP 条 > 0），但部分游戏（如 Flyff
+        // Universe）选中怪物后并不渲染蓝色 MP 条，导致该标志恒为 false，验证永远
+        // 不过、永不攻击。这里放宽为「选择标记可见 或 目标 HP 条可见」——两者任一
+        // 都足以证明确实选中了一个目标。仍排除无目标的空点击场景。
+        let target_selected = image.client_stats.target_on_screen ||
+            image.client_stats.target_hp.value > 0;
+        if target_selected {
+            slog::debug!(self.logger, "Target selected, entering Attacking"; "target_on_screen" => image.client_stats.target_on_screen, "target_is_mover" => image.client_stats.target_is_mover, "target_hp" => image.client_stats.target_hp.value);
             self.state = State::Attacking(mob);
         } else {
+            slog::debug!(self.logger, "VerifyTarget failed: no target selected"; "target_on_screen" => image.client_stats.target_on_screen, "target_is_mover" => image.client_stats.target_is_mover, "target_hp" => image.client_stats.target_hp.value);
             self.avoid_last_click();
             self.state = State::SearchingForEnemy;
         }

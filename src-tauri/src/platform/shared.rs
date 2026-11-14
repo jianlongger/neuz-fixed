@@ -58,7 +58,7 @@ pub fn eval_mob_click(window: &Window, pos: Point) {
     drop(
         window.eval(
             format!(
-                "mouseEvent('moveClick', {0}, {1}, {{checkMob: true}});",
+                "mouseEvent('moveClick', {0}, {1}, {{checkMob: false}});",
                 pos.x, pos.y
             )
             .as_str(),
