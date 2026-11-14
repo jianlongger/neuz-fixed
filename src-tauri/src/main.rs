@@ -12,6 +12,7 @@ use std::{ fs, io, path::{ Path, PathBuf }, sync::Arc, time::Duration };
 use std::io::Cursor;
 use std::io::Write;
 use image::{ DynamicImage, ImageOutputFormat };
+use libscreenshot::WindowCaptureProvider;
 
 use guard::guard;
 use ipc::FrontendInfo;
@@ -90,28 +91,27 @@ fn inject_scan_overlay(window: &Window, rect: Option<(u32, u32, u32, u32)>) {
         Some((x, y, w, h)) => format!("[{},{},{},{}]", x, y, w, h),
         None => "null".to_string(),
     };
-    let js = format!(
-        "(() => {{ \
-            var el = document.getElementById('neuz-scan-overlay'); \
-            var r = {rect_json}; \
-            if (r === null) {{ if (el) el.remove(); return; }} \
-            if (!el) {{ \
-                el = document.createElement('div'); \
-                el.id = 'neuz-scan-overlay'; \
-                (document.body || document.documentElement).appendChild(el); \
-            }} \
-            el.style.position = 'fixed'; \
-            el.style.left = r[0] + 'px'; \
-            el.style.top = r[1] + 'px'; \
-            el.style.width = r[2] + 'px'; \
-            el.style.height = r[3] + 'px'; \
-            el.style.border = '3px solid #00e676'; \
-            el.style.boxSizing = 'border-box'; \
-            el.style.pointerEvents = 'none'; \
-            el.style.zIndex = '2147483647'; \
-            el.style.background = 'rgba(0,230,118,0.08)'; \
-        }}});"
-    );
+    let js = "(() => { \
+        var el = document.getElementById('neuz-scan-overlay'); \
+        var r = __RECT__; \
+        if (r === null) { if (el) el.remove(); return; } \
+        if (!el) { \
+            el = document.createElement('div'); \
+            el.id = 'neuz-scan-overlay'; \
+            (document.body || document.documentElement).appendChild(el); \
+        } \
+        el.style.position = 'fixed'; \
+        el.style.left = r[0] + 'px'; \
+        el.style.top = r[1] + 'px'; \
+        el.style.width = r[2] + 'px'; \
+        el.style.height = r[3] + 'px'; \
+        el.style.border = '3px solid #00e676'; \
+        el.style.boxSizing = 'border-box'; \
+        el.style.pointerEvents = 'none'; \
+        el.style.zIndex = '2147483647'; \
+        el.style.background = 'rgba(0,230,118,0.08)'; \
+    })();";
+    let js = js.replace("__RECT__", &rect_json);
     let _ = window.eval(&js);
 }
 
