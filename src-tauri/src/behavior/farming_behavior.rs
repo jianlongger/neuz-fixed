@@ -56,6 +56,10 @@ pub struct FarmingBehavior<'a> {
     no_mob_near_frames: u32,
     stealed_target_count: u32,
     last_no_ennemy_time: Option<Instant>,
+    // 上次对怪物发起"补点"的时间戳。0.16.19 只在 on_enemy_found 点一次，
+    // 若首次点击因怪物走动/坐标偏差/悬停时序未到位而没选中，就再也不补点，
+    // 导致整段 Attacking 空转（"不会自动选怪"）。这里用实时检测坐标周期性补点。
+    last_retarget_time: Instant,
     concurrent_mobs_under_attack: u32,
     wait_duration: Option<Duration>,
     wait_start: Instant,
@@ -91,6 +95,7 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             no_mob_near_frames: 0,
             stealed_target_count: 0,
             last_no_ennemy_time: None,
+            last_retarget_time: Instant::now(),
             concurrent_mobs_under_attack: 0,
             wait_duration: None,
             wait_start: Instant::now(),
@@ -640,18 +645,39 @@ impl FarmingBehavior<'_> {
             self.already_attack_count = 0;
             self.attack_tick = 0;
             self.no_mob_near_frames = 0;
+            self.last_retarget_time = Instant::now();
         }
 
         self.attack_tick += 1;
 
-        // 注意：0.16.18 曾在此用「存下来的旧坐标」每 10 帧重复点选怪物，
-        // 但打怪时角色会走动、镜头会转，那个旧坐标早已不在怪身上，
-        // 点到地面导致角色朝错误方向走、来回横跳（"乱选目标 + 一直跑"）。
-        // 本游戏选中怪物后由"选中即自动攻击"持续输出，锁定由游戏维护，
-        // 因此这里只点一次（见 on_enemy_found），不要重复点陈旧坐标。
-
         // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
         self.get_slot_for(config, None, SlotType::AttackSkill, true);
+
+        // 周期性用"当前实时检测到的坐标"补点选怪。
+        // 0.16.19 只在 on_enemy_found 点一次，若首次点击因怪物走动 / 坐标偏差 /
+        // 悬停时序未到位而没选中，后续无人补点 → 整段空转（"不会自动选怪"）。
+        // 这里的坐标来自每一次 fresh 的 identify_mobs，永不落后者 stale，
+        // 因此既能从首次点空中恢复，又不会像 0.16.18 那样点到地面乱跑。
+        // 间隔 500ms：足够让游戏处理一次点击，又不会频繁抢锁。
+        if self.last_retarget_time.elapsed() > Duration::from_millis(500) {
+            let detected = image.identify_mobs(config);
+            if !detected.is_empty() {
+                let mob_list = self.prioritize_aggro(config, image, detected);
+                if
+                    let Some(current) = image.find_closest_mob(
+                        mob_list.as_slice(),
+                        None,
+                        325,
+                        self.logger
+                    )
+                {
+                    let point = current.get_attack_coords();
+                    self.last_click_pos = Some(point);
+                    eval_mob_click(self.window, point);
+                    self.last_retarget_time = Instant::now();
+                }
+            }
+        }
 
         // 击杀/离开判定：周期性重新扫描。
         // - 画面里完全识别不到任何怪且持续若干帧 → 认为已击杀或离开 → 结算。
