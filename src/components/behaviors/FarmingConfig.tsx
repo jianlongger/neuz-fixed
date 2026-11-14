@@ -70,9 +70,9 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
 
     const defaultValues = {
         'passive_mobs_colors': [234, 234, 149],
-        'passive_tolerence': 5,
+        'passive_tolerence': 30,
         'aggressive_mobs_colors': [179, 23, 23],
-        'aggressive_tolerence': 10,
+        'aggressive_tolerence': 30,
         'passive_mobs_colors_extra': [],
         'aggressive_mobs_colors_extra': [],
         'require_health_bar': false,
@@ -168,7 +168,7 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="容差" helpText="怪物名字颜色容差。如果你确定在做什么，可修改这些值。" />}
+                        label={<ConfigLabel name="容差" helpText="怪物名字颜色的容差。识别不到怪物时把它调大（30~50）；若把 UI 文字误当成怪，再调小。" />}
                         item={<NumericInput min={0} max={255} unit="#" value={(selectedMobType.current === 0)? config.passive_tolerence : config.aggressive_tolerence} onChange={value => onChange?.((selectedMobType.current === 0)? { ...config, passive_tolerence: value } : { ...config, aggressive_tolerence: value })} />}
                     />
                     <ConfigTableRow

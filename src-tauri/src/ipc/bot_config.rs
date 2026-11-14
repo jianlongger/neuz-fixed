@@ -291,21 +291,21 @@ impl FarmingConfig {
     }
 
     pub fn passive_tolerence(&self) -> u8 {
-        self.passive_tolerence.unwrap_or(5)
+        self.passive_tolerence.unwrap_or(30)
     }
 
     pub fn aggressive_mobs_colors(&self) -> [Option<u8>; 3] {
         self.aggressive_mobs_colors.unwrap_or([None, None, None])
     }
     pub fn aggressive_tolerence(&self) -> u8 {
-        self.aggressive_tolerence.unwrap_or(10)
+        self.aggressive_tolerence.unwrap_or(30)
     }
 
     pub fn violet_mobs_colors(&self) -> [Option<u8>; 3] {
         self.violet_mobs_colors.unwrap_or([None, None, None])
     }
     pub fn violet_tolerence(&self) -> u8 {
-        self.violet_tolerence.unwrap_or(10)
+        self.violet_tolerence.unwrap_or(30)
     }
 
     /// Passive mob colors as a list (primary color + any extra samples).

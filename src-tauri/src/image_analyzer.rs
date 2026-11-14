@@ -285,7 +285,7 @@ impl ImageAnalyzer {
                 }
                 for (x, _, px) in row {
                     if px.0[3] != 255 {
-                        return;
+                        continue;
                     } else if x <= 250 && y <= 110 {
                         // avoid detect the health bar as a monster
                         continue;
