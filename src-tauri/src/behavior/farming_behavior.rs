@@ -408,14 +408,14 @@ impl FarmingBehavior<'_> {
         config: &FarmingConfig,
         image: &mut ImageAnalyzer
     ) -> State {
-        if config.is_stop_fighting() {
-            // Debug "pause fighting" mode: make the diagnostic read 0 so the
-            // user can see detection is deliberately disabled.
-            self.last_mob_count = 0;
-            return State::VerifyTarget(Target::default());
-        }
+        // 始终执行识别，保证诊断里的"最近识别到怪物 N 只"反映真实画面，
+        // 即使处于调试暂停状态也能让用户分清是"没认到怪"还是"被暂停了"。
         let mobs = image.identify_mobs(config);
         self.last_mob_count = mobs.len() as u32;
+        if config.is_stop_fighting() {
+            // 调试"暂停战斗"模式：识别照常，只是不再进入攻击流程。
+            return State::VerifyTarget(Target::default());
+        }
         if mobs.is_empty() {
             // Transition to next state
             State::NoEnemyFound

@@ -345,8 +345,24 @@ impl ImageAnalyzer {
         // happen to share the monster name color.
         if config.require_health_bar() {
             let margin = config.health_bar_margin();
-            mobs_pas.retain(|m| self.has_health_bar_near(&m.bounds, margin));
-            mobs_agg.retain(|m| self.has_health_bar_near(&m.bounds, margin));
+            let pas_filtered: Vec<Target> = mobs_pas
+                .iter()
+                .filter(|m| self.has_health_bar_near(&m.bounds, margin))
+                .cloned()
+                .collect();
+            let agg_filtered: Vec<Target> = mobs_agg
+                .iter()
+                .filter(|m| self.has_health_bar_near(&m.bounds, margin))
+                .cloned()
+                .collect();
+            // 兜底：血条二次确认若把怪全部过滤光，说明判定过严（野外未选中的
+            // 怪大多不显示血条）。此时回退到不过滤的结果，避免该开关被打开后
+            // 静默停用自动打怪。只要还剩任意一只怪就采用过滤后的结果（过滤仍
+            // 能剔除部分 UI 误判），仅当过滤后一只不剩才回退。
+            if !(pas_filtered.is_empty() && agg_filtered.is_empty()) {
+                mobs_pas = pas_filtered;
+                mobs_agg = agg_filtered;
+            }
         }
 
         // Return all mobs
