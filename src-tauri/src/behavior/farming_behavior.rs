@@ -42,6 +42,11 @@ pub struct FarmingBehavior<'a> {
     is_attacking: bool,
     kill_count: u32,
     obstacle_avoidance_count: u32,
+    // Throttle repeated obstacle-avoidance jumps. When target detection is
+    // temporarily noisy (e.g. the HP bar is misread), the attacking state can
+    // otherwise request a jump on nearly every frame, which looks like the
+    // character "hopping" while fighting.
+    last_avoid_time: Option<Instant>,
     last_summon_pet_time: Option<Instant>,
     last_killed_type: MobType,
     start_time: Instant,
@@ -73,6 +78,7 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             rotation_movement_tries: 0,
             kill_count: 0,
             obstacle_avoidance_count: 0,
+            last_avoid_time: None,
             last_summon_pet_time: None,
             last_killed_type: MobType::Passive,
             start_time: Instant::now(),
@@ -544,6 +550,14 @@ impl FarmingBehavior<'_> {
 
     fn avoid_obstacle(&mut self, config: &FarmingConfig, image: &mut ImageAnalyzer, max_avoid: u32) -> bool {
         if self.obstacle_avoidance_count < max_avoid {
+            // Never fire two avoidance jumps within 1.5s. A brief misread of the
+            // target HP bar must not turn into continuous hopping while fighting.
+            if let Some(t) = self.last_avoid_time {
+                if t.elapsed() < Duration::from_millis(1500) {
+                    return false;
+                }
+            }
+            self.last_avoid_time = Some(Instant::now());
             use crate::movement::prelude::*;
             if self.farm_radius_enabled(config) {
                 // Leash: escape in place (jump + small rotate) without running

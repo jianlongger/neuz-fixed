@@ -394,6 +394,10 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                             const top = Math.max(0, Math.round(rect[1]))
                             const bottom = Math.max(0, Math.round(scanPreview.h - 110 - (rect[1] + rect[3])))
                             onChange?.({ ...config, scan_margin_left: left, scan_margin_right: right, scan_margin_top: top, scan_margin_bottom: bottom })
+                            // The overlay is only a preview. It must be removed as soon as
+                            // selection is done, otherwise it covers the target HP bar in
+                            // the captured frame and breaks mob/target detection.
+                            invoke('overlay_scan_region', { rect: null })
                             scanRegionModal.close()
                         }}
                     /> : undefined

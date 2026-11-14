@@ -109,7 +109,7 @@ fn inject_scan_overlay(window: &Window, rect: Option<(u32, u32, u32, u32)>) {
         el.style.boxSizing = 'border-box'; \
         el.style.pointerEvents = 'none'; \
         el.style.zIndex = '2147483647'; \
-        el.style.background = 'rgba(0,230,118,0.08)'; \
+        el.style.background = 'transparent'; \
     })();";
     let js = js.replace("__RECT__", &rect_json);
     let _ = window.eval(&js);
@@ -508,25 +508,15 @@ fn start_bot(profile_id: String, state: tauri::State<AppState>, app_handle: taur
                 );
                 send_config(config);
 
-                // Echo the configured scan region onto the game window as a live
-                // overlay so the user always sees what area is being scanned.
+                // The green scan-region rectangle is a transient preview used ONLY
+                // while the user drags a selection in the picker. It must never stay
+                // on the game window at runtime: window capture includes the rendered
+                // DOM, so a full-window overlay tints the target HP bar / target
+                // marker (y ~30-60) and breaks detection, which makes the bot trigger
+                // obstacle-avoidance jumps over and over while fighting.
+                // Just clear any leftover overlay when the config changes.
                 if let Some(client_window) = app_handle.get_window("client") {
-                    if let Ok(size) = client_window.inner_size() {
-                        let fc = config.farming_config();
-                        let rect = crate::image_analyzer::scan_region_rect(
-                            size.width as u32,
-                            size.height as u32,
-                            fc,
-                        );
-                        let restricted = fc.scan_margin_left() > 0
-                            || fc.scan_margin_right() > 0
-                            || fc.scan_margin_top() > 0
-                            || fc.scan_margin_bottom() > 0;
-                        inject_scan_overlay(
-                            &client_window,
-                            if restricted { Some(rect) } else { None },
-                        );
-                    }
+                    inject_scan_overlay(&client_window, None);
                 }
 
                 last_config_change_id = config.change_id();
