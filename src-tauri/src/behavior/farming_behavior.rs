@@ -6,7 +6,7 @@ use tauri::{ Manager, Window };
 
 use super::Behavior;
 use crate::{
-    data::{ AliveState, Bounds, MobType, Point, Target, TargetType },
+    data::{ Bounds, MobType, Point, Target, TargetType },
     image_analyzer::ImageAnalyzer,
     ipc::{ BotConfig, FarmingConfig, FrontendInfo, SlotType },
     movement::MovementAccessor,
@@ -14,8 +14,6 @@ use crate::{
     play,
     utils::DateTime,
 };
-
-const MAX_DISTANCE_FOR_AOE: i32 = 75;
 
 #[derive(Debug, Clone, Copy)]
 enum State {
@@ -54,6 +52,8 @@ pub struct FarmingBehavior<'a> {
     start_time: Instant,
     already_attack_count: u32,
     last_click_pos: Option<Point>,
+    attack_tick: u32,
+    no_mob_near_frames: u32,
     stealed_target_count: u32,
     last_no_ennemy_time: Option<Instant>,
     concurrent_mobs_under_attack: u32,
@@ -87,6 +87,8 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             start_time: Instant::now(),
             already_attack_count: 0,
             last_click_pos: None,
+            attack_tick: 0,
+            no_mob_near_frames: 0,
             stealed_target_count: 0,
             last_no_ennemy_time: None,
             concurrent_mobs_under_attack: 0,
@@ -614,21 +616,13 @@ impl FarmingBehavior<'_> {
         mob: Target,
         image: &mut ImageAnalyzer
     ) -> State {
-        // 进入攻击状态的条件：只要「已有目标被选中」即可。
-        // 原逻辑要求 `target_is_mover`（目标 MP 条 > 0），但部分游戏（如 Flyff
-        // Universe）选中怪物后并不渲染蓝色 MP 条，导致该标志恒为 false，验证永远
-        // 不过、永不攻击。这里放宽为「选择标记可见 或 目标 HP 条可见」——两者任一
-        // 都足以证明确实选中了一个目标。仍排除无目标的空点击场景。
-        let target_selected = image.client_stats.target_on_screen ||
-            image.client_stats.target_hp.value > 0;
-        if target_selected {
-            slog::debug!(self.logger, "Target selected, entering Attacking"; "target_on_screen" => image.client_stats.target_on_screen, "target_is_mover" => image.client_stats.target_is_mover, "target_hp" => image.client_stats.target_hp.value);
-            self.state = State::Attacking(mob);
-        } else {
-            slog::debug!(self.logger, "VerifyTarget failed: no target selected"; "target_on_screen" => image.client_stats.target_on_screen, "target_is_mover" => image.client_stats.target_is_mover, "target_hp" => image.client_stats.target_hp.value);
-            self.avoid_last_click();
-            self.state = State::SearchingForEnemy;
-        }
+        // 该游戏（Flyff Universe）选中怪物后不会在屏幕顶部渲染红/蓝血条，也不会
+        // 出现老 Flyff 的选择箭头/标记，导致 stats_info 里的 target_on_screen /
+        // target_hp / target_is_mover 始终为 false/0，原验证门永远不过关 → 永不攻击。
+        // 改为：点击之后直接信任点击结果进入攻击状态；是否仍在攻击由 on_attacking
+        // 用「重新识别画面 + 周期重新点选」来维持，彻底摆脱对这些目标的强依赖。
+        slog::debug!(self.logger, "Click sent; bypassing target-detection gate, entering Attacking");
+        self.state = State::Attacking(mob);
         self.state
     }
 
@@ -638,97 +632,47 @@ impl FarmingBehavior<'_> {
         mob: Target,
         image: &mut ImageAnalyzer
     ) -> State {
-        //self.check_restorations(config, image);
-
         if !self.is_attacking {
             self.rotation_movement_tries = 0;
-
-            // Detect if mob was attacked
-            /* if image.client_stats.target_hp.value < 100 && config.prevent_already_attacked() {
-                // TODO maybe remove this
-                let hp_last_update = image.client_stats.hp.last_update_time.unwrap();
-                // // If we didn't took any damages abort attack
-                // reducing to 500ms the time to check the last time the mob was attacked, 5s is too long.
-                if hp_last_update.elapsed().as_millis() > 500 {
-                    return self.abort_attack(image);
-                } else if self.stealed_target_count > 5 {
-                    self.stealed_target_count = 0;
-                    self.already_attack_count = 1;
-                    return self.state;
-                }
-            } else { */
-            // engaging the mob
             self.obstacle_avoidance_count = 0;
             self.last_initial_attack_time = Instant::now();
             self.is_attacking = true;
             self.already_attack_count = 0;
-            /*  } */
+            self.attack_tick = 0;
+            self.no_mob_near_frames = 0;
         }
 
-        if image.client_stats.target_on_screen || image.client_stats.target_is_alive {
-            let last_target_hp_update = image.client_stats.target_hp.last_update_time
-                .unwrap()
-                .elapsed()
-                .as_millis();
+        self.attack_tick += 1;
 
-            // Obstacle avoidance
-            if
-                !image.client_stats.target_on_screen ||
-                last_target_hp_update > config.obstacle_avoidance_cooldown()
+        let point = mob.get_attack_coords();
+
+        // 周期性重新点选怪物以维持目标锁定：本游戏无法通过血条/标记读取选中状态，
+        // 所以主动重复点击来保住锁定；游戏自身会对选中的目标自动攻击。
+        if self.attack_tick % 10 == 0 {
+            eval_mob_click(self.window, point);
+        }
+
+        // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
+        self.get_slot_for(config, None, SlotType::AttackSkill, true);
+
+        // 击杀/离开判定：周期性重新扫描。
+        // - 画面里完全识别不到任何怪且持续若干帧 → 认为已击杀或离开 → 结算。
+        // - 整体攻击超过上限（兜底）→ 结算，避免极端情况下卡死。
+        if self.attack_tick % 10 == 0 {
+            let mobs = image.identify_mobs(config);
+            if mobs.is_empty() {
+                self.no_mob_near_frames += 1;
+            } else {
+                self.no_mob_near_frames = 0;
+            }
+            if self.no_mob_near_frames >= 5 ||
+                self.last_initial_attack_time.elapsed() > Duration::from_secs(25)
             {
-                //slog::debug!(self.logger, "Obstacle avoidance"; "target_on_screen" => image.client_stats.target_on_screen, "last_target_hp_update" => last_target_hp_update, "obstacle_avoidance_cooldown" => config.obstacle_avoidance_cooldown());
-                if image.client_stats.target_hp.value == 100 {
-                    if self.avoid_obstacle(config, image, 2) {
-                        return State::SearchingForEnemy;
-                    }
-                } else if self.avoid_obstacle(config, image, config.obstacle_avoidance_max_try()) {
-                    return State::SearchingForEnemy;
-                }
+                self.is_attacking = false;
+                return State::AfterEnemyKill(mob);
             }
-            self.get_slot_for(config, None, SlotType::AttackSkill, true);
-
-            if config.max_aoe_farming() > 1 {
-                // slog::debug!(self.logger, "on attacking: "; "self.concurrent_mobs_under_attack" => self.concurrent_mobs_under_attack, );
-
-                //arbitrary checking we lower less than 70
-                if self.concurrent_mobs_under_attack < config.max_aoe_farming() {
-                    if image.client_stats.target_hp.value < 90 {
-                        self.concurrent_mobs_under_attack += 1;
-                        return self.abort_attack(image);
-                    }
-                    return self.state;
-                }
-            }
-
-            if let Some(target_distance) = image.client_stats.target_distance {
-                // slog::debug!(self.logger,"checking distance"; "market_distance" => marker_distance);
-                if target_distance < MAX_DISTANCE_FOR_AOE {
-                    self.get_slot_for(config, None, SlotType::AOEAttackSkill, true);
-                }
-            }
-            return self.state;
-        } else if image.client_stats.is_alive == AliveState::Alive {
-            // Mob's dead
-            match mob.target_type {
-                TargetType::Mob(MobType::Aggressive) => {
-                    self.last_killed_type = MobType::Aggressive;
-                }
-                TargetType::Mob(MobType::Passive) => {
-                    self.last_killed_type = MobType::Passive;
-                }
-                TargetType::Mob(MobType::Violet) => {
-                    self.last_killed_type = MobType::Violet;
-                }
-                TargetType::TargetMarker => {}
-            }
-            self.concurrent_mobs_under_attack = 0;
-            self.is_attacking = false;
-
-            return State::AfterEnemyKill(mob);
-        } else {
-            self.is_attacking = false;
-            return State::SearchingForEnemy;
         }
+        self.state
     }
     fn after_enemy_kill(
         &mut self,
