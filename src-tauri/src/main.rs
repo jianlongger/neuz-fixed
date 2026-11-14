@@ -9,6 +9,7 @@ mod platform;
 mod utils;
 
 use std::{ fs, io, path::{ Path, PathBuf }, sync::Arc, time::Duration };
+use std::io::Write;
 
 use guard::guard;
 use ipc::FrontendInfo;
@@ -45,6 +46,18 @@ fn resolve_app_data_dir(app_handle: &tauri::AppHandle) -> PathBuf {
         )
     });
     PathBuf::from(local).join("inc.madrigalstreetcartel.neuz")
+}
+
+// 调试日志：把 get_profiles 的关键信息写入本地文件，方便在无法联调的云电脑上排查。
+// 文件位于 LOCALAPPDATA\inc.madrigalstreetcartel.neuz\neuz_debug.log
+fn debug_log(msg: &str) {
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let dir = Path::new(&local).join("inc.madrigalstreetcartel.neuz");
+        let _ = fs::create_dir_all(&dir);
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(dir.join("neuz_debug.log")) {
+            let _ = writeln!(f, "{}", msg);
+        }
+    }
 }
 
 fn main() {
@@ -133,22 +146,32 @@ fn focus_client(_state: tauri::State<AppState>, app_handle: tauri::AppHandle) {
 #[tauri::command]
 fn get_profiles(_state: tauri::State<AppState>, app_handle: tauri::AppHandle) -> Vec<String> {
     let base = resolve_app_data_dir(&app_handle);
+    debug_log(&format!("get_profiles: resolved base = {:?}", base));
     let _ = fs::create_dir_all(&base);
     let mut profiles = vec![];
-    if let Ok(paths) = fs::read_dir(&base) {
-        for entry in paths.flatten() {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with("profile_") {
-                    profiles.push(name.to_string());
+    match fs::read_dir(&base) {
+        Ok(paths) => {
+            for entry in paths.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with("profile_") {
+                        profiles.push(name.to_string());
+                    }
                 }
             }
+            debug_log(&format!("get_profiles: read_dir ok, found {} profile_ entries", profiles.len()));
+        }
+        Err(e) => {
+            debug_log(&format!("get_profiles: read_dir FAILED: {}", e));
         }
     }
     if profiles.is_empty() {
-        let _ = fs::create_dir_all(base.join("profile_DEFAULT"));
+        match fs::create_dir_all(base.join("profile_DEFAULT")) {
+            Ok(_) => debug_log("get_profiles: created profile_DEFAULT"),
+            Err(e) => debug_log(&format!("get_profiles: create profile_DEFAULT FAILED: {}", e)),
+        }
         profiles.push("profile_DEFAULT".to_string());
     }
-
+    debug_log(&format!("get_profiles: returning {:?}", profiles));
     profiles
 }
 
