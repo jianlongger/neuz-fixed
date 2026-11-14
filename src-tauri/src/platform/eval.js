@@ -20,6 +20,26 @@ function dispatchEvent(event) {
     return client.dispatchEvent(event)
 }
 
+// 同时派发 MouseEvent 与 PointerEvent：现代 Unity WebGL（Flyff Universe）很多用
+// Pointer Events API 处理"按下/选中"，只认 pointerdown/pointerup；老逻辑只发
+// MouseEvent 的 mousedown/up，悬停(mousemove)能被游戏收到但"选中"可能收不到，
+// 导致选中概率低。两个都发、bubbles:true 让 document 级监听也能收到，互不冲突
+// （选中同一目标是幂等的，重复一次无副作用）。
+function fireMouse(type, x, y) {
+    dispatchEvent(new MouseEvent(type, {
+        clientX: x, clientY: y, bubbles: true, cancelable: true, view: window,
+        button: 0, buttons: type === 'mouseup' ? 0 : 1
+    }))
+}
+function firePointer(type, x, y) {
+    if (typeof PointerEvent === 'undefined') return
+    dispatchEvent(new PointerEvent(type, {
+        clientX: x, clientY: y, bubbles: true, cancelable: true, view: window,
+        pointerId: 1, pointerType: 'mouse', isPrimary: true,
+        button: 0, buttons: type === 'pointerup' ? 0 : 1
+    }))
+}
+
 function after(duration = 0, callback) {
     setTimeout(callback, duration)
 }
@@ -55,20 +75,19 @@ function mouseEvent(type, x, y, { checkMob = false, delay = 50, duration } = {})
         case 'release':
             dispatchEvent(new MouseEvent('mouseup', { clientX: x, clientY: y }))
             break;
-        case 'moveClick':
-            dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y }))
+            case 'moveClick':
+            dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }))
+            firePointer('pointermove', x, y)
 
             if (checkMob) {
                 checkMobTimeout = setTimeout(() => {
                     if (isMob()) {
-                        dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y }))
-                        dispatchEvent(new MouseEvent('mouseup', { clientX: x, clientY: y }))
-                        /* after(50, () => {
-                            dispatchEvent(new MouseEvent('mousemove', { clientX: 0, clientY: 0 }))
-                        }) */
+                        fireMouse('mousedown', x, y)
+                        firePointer('pointerdown', x, y)
+                        fireMouse('mouseup', x, y)
+                        firePointer('pointerup', x, y)
                         addTargetMarker('green', x, y)
                     } else {
-                        //dispatchEvent(new MouseEvent('mousemove', { clientX: 0, clientY: 0 }))
                         addTargetMarker('red', x, y)
                     }
                 }, delay)
@@ -82,8 +101,14 @@ function mouseEvent(type, x, y, { checkMob = false, delay = 50, duration } = {})
                 // 处理完悬停再真正按下（isMob() 在 0.16.9 能变 true 即证明
                 // 合成 mousemove 确实更新了游戏悬停态，只是需要这一帧的时间差）。
                 setTimeout(() => {
-                    dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y }))
-                    dispatchEvent(new MouseEvent('mouseup', { clientX: x, clientY: y }))
+                    fireMouse('mousedown', x, y)
+                    firePointer('pointerdown', x, y)
+                    fireMouse('mouseup', x, y)
+                    firePointer('pointerup', x, y)
+                    dispatchEvent(new MouseEvent('click', {
+                        clientX: x, clientY: y, bubbles: true, cancelable: true,
+                        view: window, button: 0
+                    }))
                 }, delay)
             }
             break;

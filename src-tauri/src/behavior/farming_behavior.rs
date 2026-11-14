@@ -60,6 +60,10 @@ pub struct FarmingBehavior<'a> {
     // 若首次点击因怪物走动/坐标偏差/悬停时序未到位而没选中，就再也不补点，
     // 导致整段 Attacking 空转（"不会自动选怪"）。这里用实时检测坐标周期性补点。
     last_retarget_time: Instant,
+    // 本次攻击锁定的目标坐标。0.16.20 用 find_closest_mob 抢"离屏幕中心最近的怪"，
+    // 导致怪没死就跳到另一只（问题：怪物没打死又选中下一个），并频繁换目标引发乱跑。
+    // 这里锁定当前这只，补点只围绕它，直到它连续不在原位才判定击杀。
+    attack_target_pos: Option<Point>,
     concurrent_mobs_under_attack: u32,
     wait_duration: Option<Duration>,
     wait_start: Instant,
@@ -96,6 +100,7 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             stealed_target_count: 0,
             last_no_ennemy_time: None,
             last_retarget_time: Instant::now(),
+            attack_target_pos: None,
             concurrent_mobs_under_attack: 0,
             wait_duration: None,
             wait_start: Instant::now(),
@@ -646,6 +651,9 @@ impl FarmingBehavior<'_> {
             self.attack_tick = 0;
             self.no_mob_near_frames = 0;
             self.last_retarget_time = Instant::now();
+            // 锁定本次攻击的目标：记下它的初始坐标，后续补点只围绕它，
+            // 不再用 find_closest_mob 抢"离屏幕中心最近的怪"（那会让怪没死就换目标）。
+            self.attack_target_pos = Some(mob.get_attack_coords());
         }
 
         self.attack_tick += 1;
@@ -653,25 +661,16 @@ impl FarmingBehavior<'_> {
         // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
         self.get_slot_for(config, None, SlotType::AttackSkill, true);
 
-        // 周期性用"当前实时检测到的坐标"补点选怪。
-        // 0.16.19 只在 on_enemy_found 点一次，若首次点击因怪物走动 / 坐标偏差 /
-        // 悬停时序未到位而没选中，后续无人补点 → 整段空转（"不会自动选怪"）。
-        // 这里的坐标来自每一次 fresh 的 identify_mobs，永不落后者 stale，
-        // 因此既能从首次点空中恢复，又不会像 0.16.18 那样点到地面乱跑。
-        // 间隔 500ms：足够让游戏处理一次点击，又不会频繁抢锁。
-        if self.last_retarget_time.elapsed() > Duration::from_millis(500) {
-            let detected = image.identify_mobs(config);
-            if !detected.is_empty() {
-                let mob_list = self.prioritize_aggro(config, image, detected);
-                if
-                    let Some(current) = image.find_closest_mob(
-                        mob_list.as_slice(),
-                        None,
-                        325,
-                        self.logger
-                    )
-                {
+        // 周期性用"当前实时检测到的坐标"补点选怪，但只补「锁定目标附近」的那只，
+        // 不抢最近的怪。这样角色走动/镜头转动后点击始终落在同一只怪身上：
+        // 既不会换目标（问题：怪没死又选中下一个），也不会点到地面乱跑。
+        // 间隔 700ms，比 0.16.20 的 500ms 更从容，避免"疯狂点"的观感。
+        if self.last_retarget_time.elapsed() > Duration::from_millis(700) {
+            if let Some(pos) = self.attack_target_pos {
+                let detected = image.identify_mobs(config);
+                if let Some(current) = self.find_target_near(detected, pos) {
                     let point = current.get_attack_coords();
+                    self.attack_target_pos = Some(point);
                     self.last_click_pos = Some(point);
                     eval_mob_click(self.window, point);
                     self.last_retarget_time = Instant::now();
@@ -679,24 +678,51 @@ impl FarmingBehavior<'_> {
             }
         }
 
-        // 击杀/离开判定：周期性重新扫描。
-        // - 画面里完全识别不到任何怪且持续若干帧 → 认为已击杀或离开 → 结算。
-        // - 整体攻击超过上限（兜底）→ 结算，避免极端情况下卡死。
+        // 击杀/离开判定：只有锁定的目标连续若干次检测都「不在原位置附近」才认为已死，
+        // 避免怪物短暂移出识别范围或某一帧漏检就误判击杀、提前换目标。
         if self.attack_tick % 10 == 0 {
-            let mobs = image.identify_mobs(config);
-            if mobs.is_empty() {
-                self.no_mob_near_frames += 1;
-            } else {
-                self.no_mob_near_frames = 0;
+            let mut still_there = false;
+            if let Some(pos) = self.attack_target_pos {
+                let detected = image.identify_mobs(config);
+                for m in detected.iter() {
+                    let p = m.get_attack_coords();
+                    let dx = (p.x as i32 - pos.x as i32).abs();
+                    let dy = (p.y as i32 - pos.y as i32).abs();
+                    if dx <= 70 && dy <= 70 {
+                        still_there = true;
+                        break;
+                    }
+                }
             }
-            if self.no_mob_near_frames >= 5 ||
-                self.last_initial_attack_time.elapsed() > Duration::from_secs(25)
+            if still_there {
+                self.no_mob_near_frames = 0;
+            } else {
+                self.no_mob_near_frames += 1;
+            }
+            if self.no_mob_near_frames >= 8 ||
+                self.last_initial_attack_time.elapsed() > Duration::from_secs(30)
             {
                 self.is_attacking = false;
                 return State::AfterEnemyKill(mob);
             }
         }
         self.state
+    }
+
+    /// 在检测到的怪里找离给定位置最近的一只（用于锁定同一目标补点）。
+    fn find_target_near(&self, mobs: Vec<Target>, pos: Point) -> Option<Target> {
+        let mut best: Option<(Target, i64)> = None;
+        for m in mobs {
+            let p = m.get_attack_coords();
+            let dx = (p.x as i32 - pos.x as i32) as i64;
+            let dy = (p.y as i32 - pos.y as i32) as i64;
+            let d = dx * dx + dy * dy;
+            match best {
+                None => best = Some((m, d)),
+                Some((_, bd)) => if d < bd { best = Some((m, d)); },
+            }
+        }
+        best.map(|(m, _)| m)
     }
     fn after_enemy_kill(
         &mut self,
