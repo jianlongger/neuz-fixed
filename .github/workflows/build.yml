@@ -16,9 +16,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'yarn'
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build (cargo registry + target dir)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+          cache-on-failure: true
 
       - name: Enable yarn (corepack)
         run: corepack enable
@@ -40,6 +47,7 @@ jobs:
       - name: Build Tauri release
         env:
           CI: false
+          CARGO_INCREMENTAL: '1'
         run: yarn tauri build
 
       - name: Upload msi artifact
