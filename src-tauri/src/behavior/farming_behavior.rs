@@ -644,13 +644,11 @@ impl FarmingBehavior<'_> {
 
         self.attack_tick += 1;
 
-        let point = mob.get_attack_coords();
-
-        // 周期性重新点选怪物以维持目标锁定：本游戏无法通过血条/标记读取选中状态，
-        // 所以主动重复点击来保住锁定；游戏自身会对选中的目标自动攻击。
-        if self.attack_tick % 10 == 0 {
-            eval_mob_click(self.window, point);
-        }
+        // 注意：0.16.18 曾在此用「存下来的旧坐标」每 10 帧重复点选怪物，
+        // 但打怪时角色会走动、镜头会转，那个旧坐标早已不在怪身上，
+        // 点到地面导致角色朝错误方向走、来回横跳（"乱选目标 + 一直跑"）。
+        // 本游戏选中怪物后由"选中即自动攻击"持续输出，锁定由游戏维护，
+        // 因此这里只点一次（见 on_enemy_found），不要重复点陈旧坐标。
 
         // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
         self.get_slot_for(config, None, SlotType::AttackSkill, true);

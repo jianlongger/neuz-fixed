@@ -74,8 +74,17 @@ function mouseEvent(type, x, y, { checkMob = false, delay = 50, duration } = {})
                 }, delay)
             } else if (!checkMob) {
                 addTargetMarker('blue', x, y)
-                dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y }))
-                dispatchEvent(new MouseEvent('mouseup', { clientX: x, clientY: y }))
+                // 0.16.9 能正常打怪、0.16.17+ 打不了的根因：原本的点击延迟被去掉了。
+                // Unity WebGL 的输入循环在「下一帧」才处理 mousemove 的悬停命中，
+                // 若 mousedown/up 与 mousemove 同步紧跟着派发，引擎会按「旧指针位置」
+                // 做命中测试，结果点不到怪 → 不选中、不攻击。
+                // 这里与 0.16.9 的 checkMob 路径一致，留出 ~delay 毫秒让游戏先
+                // 处理完悬停再真正按下（isMob() 在 0.16.9 能变 true 即证明
+                // 合成 mousemove 确实更新了游戏悬停态，只是需要这一帧的时间差）。
+                setTimeout(() => {
+                    dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y }))
+                    dispatchEvent(new MouseEvent('mouseup', { clientX: x, clientY: y }))
+                }, delay)
             }
             break;
     }
