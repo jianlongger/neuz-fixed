@@ -47,6 +47,8 @@ pub struct FarmingBehavior<'a> {
     // otherwise request a jump on nearly every frame, which looks like the
     // character "hopping" while fighting.
     last_avoid_time: Option<Instant>,
+    // Number of mobs found by the last detection pass, surfaced in the UI.
+    last_mob_count: u32,
     last_summon_pet_time: Option<Instant>,
     last_killed_type: MobType,
     start_time: Instant,
@@ -79,6 +81,7 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             kill_count: 0,
             obstacle_avoidance_count: 0,
             last_avoid_time: None,
+            last_mob_count: 0,
             last_summon_pet_time: None,
             last_killed_type: MobType::Passive,
             start_time: Instant::now(),
@@ -109,6 +112,10 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
         image: &mut ImageAnalyzer
     ) {
         let config = config.farming_config();
+        // Always publish the latest detection count, even when this iteration
+        // returns early, so the UI can distinguish "no mobs seen" from a
+        // paused / stuck bot.
+        frontend_info.set_detected_mob_count(self.last_mob_count);
         // Update all needed timestamps
         self.update_timestamps(config);
         self.check_restorations(config, image);
@@ -402,9 +409,13 @@ impl FarmingBehavior<'_> {
         image: &mut ImageAnalyzer
     ) -> State {
         if config.is_stop_fighting() {
+            // Debug "pause fighting" mode: make the diagnostic read 0 so the
+            // user can see detection is deliberately disabled.
+            self.last_mob_count = 0;
             return State::VerifyTarget(Target::default());
         }
         let mobs = image.identify_mobs(config);
+        self.last_mob_count = mobs.len() as u32;
         if mobs.is_empty() {
             // Transition to next state
             State::NoEnemyFound

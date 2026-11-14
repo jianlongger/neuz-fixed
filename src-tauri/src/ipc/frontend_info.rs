@@ -13,6 +13,9 @@ pub struct FrontendInfo {
     is_running: bool,
     is_alive: bool,
     afk_ready_to_disconnect: bool,
+    /// How many mobs were detected in the most recent detection pass. Exposed
+    /// to the UI so the user can tell "no mobs recognised" from "bot not running".
+    detected_mob_count: u32,
 }
 
 impl FrontendInfo {
@@ -53,6 +56,10 @@ impl FrontendInfo {
 
     pub fn set_is_alive(&mut self, is_alive: bool) {
         self.is_alive = is_alive;
+    }
+
+    pub fn set_detected_mob_count(&mut self, count: u32) {
+        self.detected_mob_count = count;
     }
 
     pub fn is_alive(&mut self) -> bool {

@@ -28,6 +28,8 @@ type Props = {
     botState: string,
 }
 
+type ColorPickTarget = { kind: 'primary' } | { kind: 'extra', index: number }
+
 const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botState }: Props) => {
     const statsModal = useModal()
     const debugModal = useModal()
@@ -38,6 +40,26 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
     const scanRegionModal = useModal()
     const [scanPreview, setScanPreview] = useState<{ b64: string, w: number, h: number } | null>(null)
     const [scanError, setScanError] = useState<string | null>(null)
+
+    // Screen colour picker: capture the game window once, then let the user
+    // click a pixel on that still image. No DOM is injected into the game
+    // window, so the capture used for detection stays clean.
+    const colorPickModal = useModal()
+    const [colorPreview, setColorPreview] = useState<string | null>(null)
+    const [colorPickTarget, setColorPickTarget] = useState<ColorPickTarget | null>(null)
+
+    const openColorPicker = (target: ColorPickTarget) => {
+        setColorPickTarget(target)
+        setScanError(null)
+        invoke('capture_client_preview').then((b64: any) => {
+            if (!b64) {
+                setScanError('无法截取游戏窗口，请先启动游戏（点“开始”）并确保游戏窗口已打开。')
+                return
+            }
+            setColorPreview(b64)
+            colorPickModal.open()
+        }).catch(() => setScanError('截图失败，请确认游戏窗口已启动。'))
+    }
 
     const mobsNameDebugModal = useModal(debugModal)
     const mobsColorsDebugModal = useModal(mobsNameDebugModal)
@@ -68,6 +90,9 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
         'scan_margin_right': 0,
         'prevent_already_attacked': true,
         'prioritize_aggro': true,
+        // Explicit default: without it the toggle reads `undefined` and a
+        // single click silently turns fighting OFF (the old "检测 🎯" button).
+        'is_stop_fighting': false,
         'interval_between_buffs': 2000,
         'aoe_farming': 1,
     }
@@ -133,8 +158,13 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                 <ConfigTable>
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="颜色" helpText="怪物名字颜色参考。如果你确定在做什么，可修改这些值。" />}
-                        item={<ColorSelector value={(selectedMobType.current === 0)? config.passive_mobs_colors ?? [] : config.aggressive_mobs_colors ?? []} onChange={value => onChange?.((selectedMobType.current === 0)?{ ...config, passive_mobs_colors: value}: { ...config, aggressive_mobs_colors: value})} />}
+                        label={<ConfigLabel name="颜色" helpText="怪物名字颜色参考。推荐用「从画面取色」在游戏截图上直接点选怪名文字，比手填 RGB 准。" />}
+                        item={
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <ColorSelector value={(selectedMobType.current === 0)? config.passive_mobs_colors ?? [] : config.aggressive_mobs_colors ?? []} onChange={value => onChange?.((selectedMobType.current === 0)?{ ...config, passive_mobs_colors: value}: { ...config, aggressive_mobs_colors: value})} />
+                                <button onClick={() => openColorPicker({ kind: 'primary' })}>从画面取色</button>
+                            </div>
+                        }
                     />
                     <ConfigTableRow
                         layout="v"
@@ -165,6 +195,7 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                                             arr[i] = v;
                                             onChange?.({ ...config, [keyName]: arr });
                                         }} />
+                                        <button onClick={() => openColorPicker({ kind: 'extra', index: i })}>取色</button>
                                         <button onClick={() => {
                                             const arr = list.slice();
                                             arr.splice(i, 1);
@@ -404,6 +435,33 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                 }
             />
 
+            <Modal isShowing={colorPickModal.isShown} hide={colorPickModal.close}
+                title={<h4>从画面取色</h4>} body={
+                    colorPreview ? <ScreenColorPicker
+                        b64={colorPreview}
+                        onCancel={colorPickModal.close}
+                        onPick={(rgb) => {
+                            const t = colorPickTarget
+                            if (t && t.kind === 'primary') {
+                                onChange?.(selectedMobType.current === 0
+                                    ? { ...config, passive_mobs_colors: rgb }
+                                    : { ...config, aggressive_mobs_colors: rgb })
+                            } else if (t && t.kind === 'extra') {
+                                const keyName = selectedMobType.current === 0
+                                    ? 'passive_mobs_colors_extra'
+                                    : 'aggressive_mobs_colors_extra'
+                                const arr = (selectedMobType.current === 0
+                                    ? (config.passive_mobs_colors_extra ?? [])
+                                    : (config.aggressive_mobs_colors_extra ?? [])).slice()
+                                arr[t.index] = rgb
+                                onChange?.({ ...config, [keyName]: arr })
+                            }
+                            colorPickModal.close()
+                        }}
+                    /> : undefined
+                }
+            />
+
             <Modal isShowing={statsModal.isShown} hide={statsModal.close}
             title={<h4>统计</h4>} body={
                 <div className="stats">
@@ -468,11 +526,14 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         <div>状态：{ botState }</div>
                     </div>
                     <div className="row">
-                        <div>目标检测：{ config.is_stop_fighting? "🛑" : "✅" }</div>
+                        <div>最近识别到怪物：{ info.detected_mob_count ?? 0 } 只</div>
+                    </div>
+                    <div className="row">
+                        <div>战斗：{ config.is_stop_fighting ? "已暂停（调试）" : "正常" }</div>
                     </div>
                     <button className="btn sm"
                             onClick={e => onChange?.({ ...config, is_stop_fighting: !config.is_stop_fighting })} >
-                            检测 🎯
+                            { config.is_stop_fighting ? "恢复战斗" : "暂停战斗（调试）" }
                     </button>
                     <div className="row">
                         <button className="btn sm" onClick={statsModal.open}>统计 📊</button>
@@ -577,6 +638,109 @@ const ScanRegionPicker = ({ b64, imgW, imgH, onConfirm, onCancel }: {
                     已选：X {Math.round(sel.x)} · Y {Math.round(sel.y)} · 宽 {Math.round(sel.w)} · 高 {Math.round(sel.h)}（原始像素，截图尺寸 {imgW}×{imgH}）
                 </div>
             )}
+        </div>
+    )
+}
+
+// Pick a colour from a still capture of the game window. The image is drawn
+// into a canvas (data URLs are same-origin, so getImageData is allowed) and a
+// 3x3 average reduces antialiasing noise on thin monster-name text.
+// No DOM is injected into the game window itself, so detection stays clean.
+const ScreenColorPicker = ({ b64, onPick, onCancel }: {
+    b64: string,
+    onPick: (rgb: number[]) => void,
+    onCancel: () => void,
+}) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const [ready, setReady] = useState(false)
+    const [hover, setHover] = useState<{ x: number, y: number, rgb: number[] } | null>(null)
+    const [picked, setPicked] = useState<{ x: number, y: number, rgb: number[] } | null>(null)
+
+    useEffect(() => {
+        setReady(false)
+        setHover(null)
+        setPicked(null)
+        const img = new Image()
+        img.onload = () => {
+            const c = canvasRef.current
+            if (!c) return
+            c.width = img.naturalWidth
+            c.height = img.naturalHeight
+            const ctx = c.getContext('2d')
+            if (!ctx) return
+            ctx.drawImage(img, 0, 0)
+            setReady(true)
+        }
+        img.src = 'data:image/png;base64,' + b64
+    }, [b64])
+
+    const readAt = (clientX: number, clientY: number) => {
+        const c = canvasRef.current
+        if (!c || !ready) return null
+        const r = c.getBoundingClientRect()
+        if (!r.width || !r.height) return null
+        const x = Math.max(0, Math.min(c.width - 1, Math.floor((clientX - r.left) * c.width / r.width)))
+        const y = Math.max(0, Math.min(c.height - 1, Math.floor((clientY - r.top) * c.height / r.height)))
+        const ctx = c.getContext('2d')
+        if (!ctx) return null
+        const x0 = Math.max(0, x - 1)
+        const y0 = Math.max(0, y - 1)
+        const w = Math.min(3, c.width - x0)
+        const h = Math.min(3, c.height - y0)
+        const d = ctx.getImageData(x0, y0, w, h).data
+        let sr = 0, sg = 0, sb = 0, n = 0
+        for (let i = 0; i < d.length; i += 4) {
+            sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++
+        }
+        if (!n) return null
+        return { x, y, rgb: [Math.round(sr / n), Math.round(sg / n), Math.round(sb / n)] }
+    }
+
+    const shown = picked ?? hover
+    const c = canvasRef.current
+    const rect = shown && c ? c.getBoundingClientRect() : null
+    const scaleX = rect && c && c.width ? rect.width / c.width : 1
+    const scaleY = rect && c && c.height ? rect.height / c.height : 1
+
+    return (
+        <div>
+            <p style={{ fontSize: 12, opacity: 0.85 }}>
+                下面是游戏窗口截图。把鼠标移到怪物名字文字上查看颜色，点击选中，再点「应用此颜色」。取 3×3 小块平均值，减少文字抗锯齿的偏差；应用后仍可手动微调 RGB。
+            </p>
+            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', lineHeight: 0 }}>
+                <canvas
+                    ref={canvasRef}
+                    style={{ maxWidth: '100%', display: 'block', cursor: 'crosshair' }}
+                    onMouseMove={e => setHover(readAt(e.clientX, e.clientY))}
+                    onMouseLeave={() => setHover(null)}
+                    onClick={e => setPicked(readAt(e.clientX, e.clientY))}
+                />
+                {shown && (
+                    <div style={{
+                        position: 'absolute',
+                        left: shown.x * scaleX - 5,
+                        top: shown.y * scaleY - 5,
+                        width: 10, height: 10,
+                        border: '2px solid #fff', boxSizing: 'border-box', pointerEvents: 'none',
+                        boxShadow: '0 0 0 1px #000'
+                    }} />
+                )}
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                    width: 28, height: 28, border: '1px solid #888',
+                    background: shown ? `rgb(${shown.rgb[0]},${shown.rgb[1]},${shown.rgb[2]})` : 'transparent'
+                }} />
+                <div style={{ fontSize: 12 }}>
+                    {shown
+                        ? `R ${shown.rgb[0]} · G ${shown.rgb[1]} · B ${shown.rgb[2]}（X ${shown.x} · Y ${shown.y}）${picked ? ' · 已选中' : ' · 悬停预览'}`
+                        : '尚未选取颜色'}
+                </div>
+            </div>
+            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                <div className="btn sm" onClick={() => { if (picked) onPick(picked.rgb) }}>应用此颜色</div>
+                <div className="btn sm" onClick={onCancel}>取消</div>
+            </div>
         </div>
     )
 }

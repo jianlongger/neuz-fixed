@@ -576,17 +576,20 @@ fn start_bot(profile_id: String, state: tauri::State<AppState>, app_handle: taur
                     }
                 }
 
-                if !config.farming_config().is_stop_fighting() {
-                    drop(
-                        window.set_size(
-                            Size::Logical(LogicalSize {
-                                width: 800.0,
-                                height: 600.0,
-                            })
-                        )
-                    );
-                    drop(window.set_resizable(false));
-                }
+                // The window MUST stay at 800x600 regardless of the debug
+                // "stop fighting" toggle: every pixel coordinate used by the
+                // detector (target HP bar, name colors, scan margins) is
+                // hardcoded for this size. Gating this on is_stop_fighting made
+                // detection silently fail whenever that toggle was on.
+                drop(
+                    window.set_size(
+                        Size::Logical(LogicalSize {
+                            width: 800.0,
+                            height: 600.0,
+                        })
+                    )
+                );
+                drop(window.set_resizable(false));
             }
 
             // Client window is closed

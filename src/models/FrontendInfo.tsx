@@ -9,5 +9,6 @@ export type FrontendInfoModel = {
     last_search_duration: number,
     kill_min_avg: number,
     kill_hour_avg: number,
+    detected_mob_count: number,
     version: number[],
 }
