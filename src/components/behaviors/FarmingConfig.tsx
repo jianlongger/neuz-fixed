@@ -166,7 +166,7 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                                             onChange?.({ ...config, [keyName]: arr });
                                         }}>×</button>
                                     </div>
-                                ); })()}
+                                )); })()}
                                 <button onClick={() => {
                                     const arr = list.slice();
                                     arr.push([255, 0, 0]);
