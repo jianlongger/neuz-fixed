@@ -638,20 +638,20 @@ impl FarmingBehavior<'_> {
                 .elapsed()
                 .as_millis();
 
-                // Obstacle avoidance
-                if
-                    !image.client_stats.target_on_screen ||
-                    last_target_hp_update > config.obstacle_avoidance_cooldown()
-                {
-                    //slog::debug!(self.logger, "Obstacle avoidance"; "target_on_screen" => image.client_stats.target_on_screen, "last_target_hp_update" => last_target_hp_update, "obstacle_avoidance_cooldown" => config.obstacle_avoidance_cooldown());
-                    if image.client_stats.target_hp.value == 100 {
-                        if self.avoid_obstacle(config, image, 2) {
-                            return State::SearchingForEnemy;
-                        }
-                    } else if self.avoid_obstacle(config, image, config.obstacle_avoidance_max_try()) {
+            // Obstacle avoidance
+            if
+                !image.client_stats.target_on_screen ||
+                last_target_hp_update > config.obstacle_avoidance_cooldown()
+            {
+                //slog::debug!(self.logger, "Obstacle avoidance"; "target_on_screen" => image.client_stats.target_on_screen, "last_target_hp_update" => last_target_hp_update, "obstacle_avoidance_cooldown" => config.obstacle_avoidance_cooldown());
+                if image.client_stats.target_hp.value == 100 {
+                    if self.avoid_obstacle(config, image, 2) {
                         return State::SearchingForEnemy;
                     }
+                } else if self.avoid_obstacle(config, image, config.obstacle_avoidance_max_try()) {
+                    return State::SearchingForEnemy;
                 }
+            }
             self.get_slot_for(config, None, SlotType::AttackSkill, true);
 
             if config.max_aoe_farming() > 1 {
