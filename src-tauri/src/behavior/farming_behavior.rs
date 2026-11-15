@@ -64,6 +64,9 @@ pub struct FarmingBehavior<'a> {
     // 导致怪没死就跳到另一只（问题：怪物没打死又选中下一个），并频繁换目标引发乱跑。
     // 这里锁定当前这只，补点只围绕它，直到它连续不在原位才判定击杀。
     attack_target_pos: Option<Point>,
+    // 攻击期间的补点计数：每 3 次放行一次"无条件点击"兜底，其余走 isMob 门控，
+    // 杜绝悬停不在怪上时按下鼠标（点地面 → 角色乱走）。
+    retarget_count: u32,
     concurrent_mobs_under_attack: u32,
     wait_duration: Option<Duration>,
     wait_start: Instant,
@@ -101,6 +104,7 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             last_no_ennemy_time: None,
             last_retarget_time: Instant::now(),
             attack_target_pos: None,
+            retarget_count: 0,
             concurrent_mobs_under_attack: 0,
             wait_duration: None,
             wait_start: Instant::now(),
@@ -538,7 +542,9 @@ impl FarmingBehavior<'_> {
         self.last_click_pos = Some(point);
 
         // Set cursor position and simulate a click
-        eval_mob_click(self.window, point);
+        // 首次选怪点击始终无条件：识别刚找到怪、坐标最新鲜，且若门控（isMob）
+        // 失灵也不能卡死在起点。防点地面由攻击期间的门控补点负责。
+        eval_mob_click(self.window, point, false);
 
         // Wait a few ms before transitioning state
         std::thread::sleep(Duration::from_millis(150));
@@ -661,18 +667,22 @@ impl FarmingBehavior<'_> {
         // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
         self.get_slot_for(config, None, SlotType::AttackSkill, true);
 
-        // 周期性用"当前实时检测到的坐标"补点选怪，但只补「锁定目标附近」的那只，
-        // 不抢最近的怪。这样角色走动/镜头转动后点击始终落在同一只怪身上：
-        // 既不会换目标（问题：怪没死又选中下一个），也不会点到地面乱跑。
-        // 间隔 700ms，比 0.16.20 的 500ms 更从容，避免"疯狂点"的观感。
+        // 周期性用"当前实时检测到的坐标"补点选怪，但只补「锁定目标附近」的那只。
+        // 距离安全带 200px：锁定目标若漂出此范围（角色走动带动镜头移动、屏幕
+        // 坐标系失效），视为目标丢失、本次不补点，交给击杀判定回搜索——
+        // 否则会追着屏幕另一头的怪一路狂点乱跑（0.16.22"朝同一方向一直点击"）。
         if self.last_retarget_time.elapsed() > Duration::from_millis(700) {
             if let Some(pos) = self.attack_target_pos {
                 let detected = image.identify_mobs(config);
-                if let Some(current) = self.find_target_near(detected, pos) {
+                if let Some(current) = self.find_target_near(detected, pos, 200) {
                     let point = current.get_attack_coords();
                     self.attack_target_pos = Some(point);
                     self.last_click_pos = Some(point);
-                    eval_mob_click(self.window, point);
+                    // 门控补点：默认走 isMob()（悬停在怪上才按下，杜绝点地面）；
+                    // 每 3 次放行一次无条件点击兜底，防止游戏光标判定失灵时永远站桩。
+                    self.retarget_count += 1;
+                    let check_mob = self.retarget_count % 3 != 0;
+                    eval_mob_click(self.window, point, check_mob);
                     self.last_retarget_time = Instant::now();
                 }
             }
@@ -709,14 +719,24 @@ impl FarmingBehavior<'_> {
         self.state
     }
 
-    /// 在检测到的怪里找离给定位置最近的一只（用于锁定同一目标补点）。
-    fn find_target_near(&self, mobs: Vec<Target>, pos: Point) -> Option<Target> {
+    /// 在检测到的怪里找离给定位置最近、且不超过 max_distance 的一只
+    /// （用于锁定同一目标补点）。超出距离视为目标丢失，返回 None。
+    fn find_target_near(
+        &self,
+        mobs: Vec<Target>,
+        pos: Point,
+        max_distance: i32
+    ) -> Option<Target> {
+        let max_d2 = (max_distance as i64) * (max_distance as i64);
         let mut best: Option<(Target, i64)> = None;
         for m in mobs {
             let p = m.get_attack_coords();
             let dx = (p.x as i32 - pos.x as i32) as i64;
             let dy = (p.y as i32 - pos.y as i32) as i64;
             let d = dx * dx + dy * dy;
+            if d > max_d2 {
+                continue;
+            }
             match best {
                 None => best = Some((m, d)),
                 Some((_, bd)) => if d < bd { best = Some((m, d)); },

@@ -54,12 +54,16 @@ pub fn send_slot_eval(window: &Window, slot_bar_index: usize, k: usize) {
     drop(window.eval(format!("sendSlot({0}, {1})", slot_bar_index, k).as_str()))
 }
 
-pub fn eval_mob_click(window: &Window, pos: Point) {
+pub fn eval_mob_click(window: &Window, pos: Point, check_mob: bool) {
+    // check_mob=true 时走 eval.js 的 isMob() 门控：mousemove 后等 50ms 让游戏
+    // 更新悬停光标，只有光标是"攻击光标"（悬停在怪上）才真正按下——杜绝点到
+    // 地面导致角色乱走（0.16.20/0.16.22 乱跑的根源）。false 为无条件点击，
+    // 仅用于首次选怪与周期性兜底（防止光标判定失灵时永远站桩）。
     drop(
         window.eval(
             format!(
-                "mouseEvent('moveClick', {0}, {1}, {{checkMob: false}});",
-                pos.x, pos.y
+                "mouseEvent('moveClick', {0}, {1}, {{checkMob: {2}}});",
+                pos.x, pos.y, check_mob
             )
             .as_str(),
         ),
