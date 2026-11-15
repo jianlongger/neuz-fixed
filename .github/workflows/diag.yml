@@ -24,13 +24,15 @@ jobs:
       - name: cargo check (capture output)
         shell: pwsh
         run: |
+          New-Item -Path $env:GITHUB_WORKSPACE -Name check.txt -ItemType File -Force
           cd src-tauri
-          cargo check --message-format=short *>&1 | Tee-Object -FilePath $env:GITHUB_WORKSPACE\check.txt
-          echo "EXIT=$LASTEXITCODE" | Out-File -Append -FilePath $env:GITHUB_WORKSPACE\check.txt
+          cargo check --message-format=short *> $env:GITHUB_WORKSPACE\check.txt 2>&1
+          Add-Content $env:GITHUB_WORKSPACE\check.txt "EXITCODE=$LASTEXITCODE"
 
       - name: Upload diag artifact
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: rust-diag
-          path: check.txt
+          path: ${{ github.workspace }}/check.txt
