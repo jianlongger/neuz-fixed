@@ -634,13 +634,16 @@ impl FarmingBehavior<'_> {
             /*  } */
         }
 
-        // Fixed position mode: if the character gets pulled away from the camp
-        // point (the locked target drifts beyond the radius around the screen
-        // center), abort the attack. The character stops walking and the camera
-        // re-centers it on the spot — i.e. it "returns" to the fixed point.
+        // Fixed position mode: if the locked target is beyond the camp radius
+        // around the screen center, abort the attack. The character stops
+        // walking and the camera re-centers it on the spot — i.e. it "returns"
+        // to the fixed point (the character is always kept at the screen center).
+        // The +20px tolerance covers the ~10px vertical offset between the mob's
+        // attack point (used during selection) and its lowest-center point (used
+        // here), so a freshly locked mob is never aborted on its first tick.
         if config.fixed_point_enabled() {
             let distance_from_center = image.get_target_marker_distance(mob.clone());
-            if distance_from_center > config.fixed_point_radius() {
+            if distance_from_center > config.fixed_point_radius() + 20 {
                 return self.abort_attack(image);
             }
         }

@@ -9,6 +9,8 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use slog::Logger;
 use tauri::Window;
 
+use image::{DynamicImage, ImageOutputFormat, RgbaImage};
+
 use crate::{
     data::{point_selector, Bounds, ClientStats, MobType, Point, PointCloud, Target, TargetType},
     ipc::FarmingConfig,
@@ -45,6 +47,31 @@ impl ImageAnalyzer {
 
     pub fn image_is_some(&self) -> bool {
         self.image.is_some()
+    }
+
+    /// Encode the current captured frame as a base64 PNG `data:` URL for the
+    /// frontend visualizer / fixed-point picker. Returns `(data_url, width, height)`
+    /// or `None` when no frame has been captured yet.
+    pub fn get_visualizer_frame(&self) -> Option<(String, u32, u32)> {
+        let img = self.image.as_ref()?;
+        let w = img.width();
+        let h = img.height();
+        let raw = img.as_raw().clone();
+        let rgba = RgbaImage::from_raw(w, h, raw)?;
+        let dyn_img = DynamicImage::ImageRgba8(rgba);
+        let mut png_buf: Vec<u8> = Vec::new();
+        if dyn_img
+            .write_to(
+                &mut std::io::Cursor::new(&mut png_buf),
+                ImageOutputFormat::Png,
+            )
+            .is_ok()
+        {
+            let b64 = base64::encode(&png_buf);
+            Some((format!("data:image/png;base64,{}", b64), w, h))
+        } else {
+            None
+        }
     }
 
     pub fn capture_window(&mut self, logger: &Logger) {

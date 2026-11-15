@@ -481,29 +481,15 @@ fn start_bot(profile_id: String, state: tauri::State<AppState>, app_handle: taur
                 // live game view, view the fixed-point camp circle, and click to pick
                 // the farm radius. Throttled to ~4 fps to keep the IPC payload small.
                 if last_visualizer_emit.map_or(true, |t| t.elapsed() > Duration::from_millis(250)) {
-                    if let Some(img) = image_analyzer.image.as_ref() {
-                        let raw = img.as_raw().clone();
-                        if let Some(rgba) = image::RgbaImage::from_raw(img.width(), img.height(), raw) {
-                            let dyn_img = image::DynamicImage::ImageRgba8(rgba);
-                            let mut png_buf: Vec<u8> = Vec::new();
-                            if dyn_img
-                                .write_to(
-                                    &mut std::io::Cursor::new(&mut png_buf),
-                                    image::ImageOutputFormat::Png,
-                                )
-                                .is_ok()
-                            {
-                                let b64 = base64::encode(&png_buf);
-                                let _ = app_handle.emit_all(
-                                    "bot_visualizer_update",
-                                    serde_json::json!({
-                                        "image": format!("data:image/png;base64,{}", b64),
-                                        "width": img.width(),
-                                        "height": img.height()
-                                    }),
-                                );
-                            }
-                        }
+                    if let Some((data_url, w, h)) = image_analyzer.get_visualizer_frame() {
+                        let _ = app_handle.emit_all(
+                            "bot_visualizer_update",
+                            serde_json::json!({
+                                "image": data_url,
+                                "width": w,
+                                "height": h
+                            }),
+                        );
                     }
                     last_visualizer_emit = Some(Instant::now());
                 }
