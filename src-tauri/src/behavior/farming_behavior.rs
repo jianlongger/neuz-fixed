@@ -10,7 +10,7 @@ use crate::{
     image_analyzer::ImageAnalyzer,
     ipc::{ BotConfig, FarmingConfig, FrontendInfo, SlotType },
     movement::MovementAccessor,
-    platform::{ eval_mob_click, send_slot_eval },
+    platform::{ eval_mob_click, send_slot_eval, set_debug_overlay },
     play,
     utils::DateTime,
 };
@@ -64,6 +64,11 @@ pub struct FarmingBehavior<'a> {
     // 导致怪没死就跳到另一只（问题：怪物没打死又选中下一个），并频繁换目标引发乱跑。
     // 这里锁定当前这只，补点只围绕它，直到它连续不在原位才判定击杀。
     attack_target_pos: Option<Point>,
+    // 上次实际发起点击的时间戳。0.16.20+ 每 500ms 无条件重复点击同一只怪，
+    // 部分游戏对"已选中目标再点一次"会取消选中，导致"猛点却选不中"。
+    // 改为：目标仍在画面内就信任游戏自身锁定、不再重复点击；只在目标丢失或
+    // 超过 3 秒未补点时才补点（兜底防锁意外丢失）。
+    last_click_time: Instant,
     concurrent_mobs_under_attack: u32,
     wait_duration: Option<Duration>,
     wait_start: Instant,
@@ -101,6 +106,7 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             last_no_ennemy_time: None,
             last_retarget_time: Instant::now(),
             attack_target_pos: None,
+            last_click_time: Instant::now(),
             concurrent_mobs_under_attack: 0,
             wait_duration: None,
             wait_start: Instant::now(),
@@ -533,13 +539,14 @@ impl FarmingBehavior<'_> {
 
     fn on_enemy_found(&mut self, mob: Target) -> State {
         // Transform attack coords into local window coords
-        let point = mob.get_attack_coords();
+        // 首点用默认偏移(+10，沿用旧行为)；用户若在设置里调了「选怪点击偏移」，
+        // 会在攻击期间的补点里生效。
+        let point = mob.get_attack_coords(10);
 
         self.last_click_pos = Some(point);
 
         // Set cursor position and simulate a click
-        // 首次选怪点击始终无条件：识别刚找到怪、坐标最新鲜，且若门控（isMob）
-        // 失灵也不能卡死在起点。防点地面由攻击期间的门控补点负责。
+        // 首次选怪点击无条件：识别刚找到怪、坐标最新鲜，且门控失灵也不能卡死。
         eval_mob_click(self.window, point, false);
 
         // Wait a few ms before transitioning state
@@ -653,9 +660,10 @@ impl FarmingBehavior<'_> {
             self.attack_tick = 0;
             self.no_mob_near_frames = 0;
             self.last_retarget_time = Instant::now();
+            self.last_click_time = Instant::now();
             // 锁定本次攻击的目标：记下它的初始坐标，后续补点只围绕它，
             // 不再用 find_closest_mob 抢"离屏幕中心最近的怪"（那会让怪没死就换目标）。
-            self.attack_target_pos = Some(mob.get_attack_coords());
+            self.attack_target_pos = Some(mob.get_attack_coords(10));
         }
 
         self.attack_tick += 1;
@@ -663,46 +671,65 @@ impl FarmingBehavior<'_> {
         // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
         self.get_slot_for(config, None, SlotType::AttackSkill, true);
 
-        // 周期用"当前实时检测坐标"补点选怪，只围绕「锁定目标」那只（不再用
-        // find_closest_mob 抢离屏幕中心最近的怪，避免怪没死就换目标）。坐标来自
-        // 每次 fresh 检测，永不落后者陈旧值，所以不会像 0.16.18 那样点到地面乱跑。
-        // 距离上限放宽到 400px：角色走动/镜头转动带动目标在屏幕上平移时仍跟得住，
-        // 不会因 0.16.22/23 的 200px 过严而频繁判定"目标丢失"→不补点→点不到怪。
-        // 点击始终无条件（checkMob:false）：0.16.22/23 的 isMob 门控会抑制大量点击，
-        // 而本游戏的合成 mousemove 能否稳定把光标置为 curattack 不可靠，门控反而让
-        // "选中"概率更低。无条件点击 + 游戏"选中即自动攻击"是 0.16.20 已验证可行的路径。
-        if self.last_retarget_time.elapsed() > Duration::from_millis(500) {
-            if let Some(pos) = self.attack_target_pos {
-                let detected = image.identify_mobs(config);
-                if let Some(current) = self.find_target_near(detected, pos, 400) {
-                    let point = current.get_attack_coords();
-                    self.attack_target_pos = Some(point);
-                    self.last_click_pos = Some(point);
-                    eval_mob_click(self.window, point, false);
-                    self.last_retarget_time = Instant::now();
+        let offset = config.mob_click_offset_y();
+
+        // 节流：约每 300ms 才做一次检测与点击决策，避免高频重复点击。
+        if self.last_retarget_time.elapsed() > Duration::from_millis(300) {
+            self.last_retarget_time = Instant::now();
+
+            // 调试叠层开关（0.16.25）：开启后在游戏画面画出怪物框与点击点。
+            set_debug_overlay(self.window, config.debug_overlay());
+
+            let detected = image.identify_mobs(config);
+
+            if config.debug_overlay() {
+                for m in detected.iter() {
+                    let b = m.bounds;
+                    drop(
+                        self.window
+                            .eval(format!("drawMobBox({},{},{},{})", b.x, b.y, b.w, b.h).as_str()),
+                    );
                 }
             }
-        }
 
-        // 击杀/离开判定：锁定的目标连续若干次检测都「不在原位置附近(≤150px)」才认为
-        // 已死，避免怪物短暂移出识别范围或某一帧漏检就误判击杀、提前换目标。
-        if self.attack_tick % 10 == 0 {
-            let detected = image.identify_mobs(config);
-            let mut still_there = false;
+            // 锁定的目标是否仍在画面内（以"名字框底边中心+偏移"为基准，容差 150px）。
+            let mut target_present = false;
             if let Some(pos) = self.attack_target_pos {
                 for m in detected.iter() {
-                    let p = m.get_attack_coords();
-                    let dx = (p.x as i32 - pos.x as i32).abs();
-                    let dy = (p.y as i32 - pos.y as i32).abs();
-                    if dx <= 150 && dy <= 150 {
-                        still_there = true;
+                    let p = m.get_attack_coords(offset);
+                    if (p.x as i32 - pos.x as i32).abs() <= 150 &&
+                        (p.y as i32 - pos.y as i32).abs() <= 150
+                    {
+                        target_present = true;
                         break;
                     }
                 }
             } else {
-                still_there = true;
+                target_present = true;
             }
-            if still_there {
+
+            // 仅在两种情况下补点，避免 0.16.20+ 每 500ms 无条件重复点击同一只怪——
+            // 部分游戏对"已选中目标再点一次"会取消选中，表现为"猛点却选不中"。
+            // ① 锁定目标丢失（不在画面内）→ 立即重新选；
+            // ② 已超过 3 秒未补点（兜底，防游戏锁意外丢失后永远站桩）。
+            // 目标仍在画面内时信任游戏自身"选中即锁定"，不重复点击。
+            let need_click =
+                !target_present || self.last_click_time.elapsed() > Duration::from_secs(3);
+            if need_click {
+                if let Some(pos) = self.attack_target_pos {
+                    if let Some(current) = self.find_target_near(detected, pos, 400, offset) {
+                        let point = current.get_attack_coords(offset);
+                        self.attack_target_pos = Some(point);
+                        self.last_click_pos = Some(point);
+                        eval_mob_click(self.window, point, false);
+                        self.last_click_time = Instant::now();
+                    }
+                }
+            }
+
+            // 击杀/离开判定：锁定目标连续 8 次检测都不在画面内（≈2.4s）才认为已死，
+            // 避免怪物短暂遮挡/移出识别范围就误判击杀、提前换目标。
+            if target_present {
                 self.no_mob_near_frames = 0;
             } else {
                 self.no_mob_near_frames += 1;
@@ -723,12 +750,13 @@ impl FarmingBehavior<'_> {
         &self,
         mobs: Vec<Target>,
         pos: Point,
-        max_distance: i32
+        max_distance: i32,
+        offset: i32
     ) -> Option<Target> {
         let max_d2 = (max_distance as i64) * (max_distance as i64);
         let mut best: Option<(Target, i64)> = None;
         for m in mobs {
-            let p = m.get_attack_coords();
+            let p = m.get_attack_coords(offset);
             let dx = (p.x as i32 - pos.x as i32) as i64;
             let dy = (p.y as i32 - pos.y as i32) as i64;
             let d = dx * dx + dy * dy;

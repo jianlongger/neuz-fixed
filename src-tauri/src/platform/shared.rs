@@ -74,6 +74,12 @@ pub fn eval_simple_click(window: &Window, pos: Point) {
     drop(window.eval(format!("mouseEvent('moveClick', {0}, {1});", pos.x, pos.y).as_str()));
 }
 
+/// 开关 game 页面里的调试叠层（绘制怪物框与点击点）。debug=true 时
+/// eval.js 会把 window.__NEUZ_DEBUG 置真，addTargetMarker / drawMobBox 才绘制。
+pub fn set_debug_overlay(window: &Window, debug: bool) {
+    drop(window.eval(format!("window.__NEUZ_DEBUG = {}", debug).as_str()));
+}
+
 pub fn eval_send_message(window: &Window, text: &str) {
     // The message is embedded into a JS expression, so it has to be encoded as a
     // string literal. Without this, any message containing a space (or quotes,

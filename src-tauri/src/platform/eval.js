@@ -1,16 +1,27 @@
 const client = document.querySelector('canvas')
 const input = document.querySelector('input')
-const DEBUG = false && $env.DEBUG
+// 调试叠层由 Rust 端通过 window.__NEUZ_DEBUG 实时开关（0.16.25 起），
+// 不再依赖编译期 $env.DEBUG，方便用户随时开启观察点击落点。
 function addTargetMarker(color = 'red', x = 0, y = 0,) {
-    if (!DEBUG) return
+    if (!window.__NEUZ_DEBUG) return
     const targetMarker = document.createElement('div')
-    const targetMarkerStyle = `position: fixed; width: 2px; height: 2px; background-color: ${color}; border-radius: 50%;z-index: 9999;left: ${x}px;top: ${y}px;`
+    const targetMarkerStyle = `position: fixed; width: 4px; height: 4px; background-color: ${color}; border-radius: 50%;z-index: 10000;left: ${x - 2}px;top: ${y - 2}px;`
     targetMarker.style = targetMarkerStyle
     document.body.appendChild(targetMarker)
 
     setTimeout(() => {
         targetMarker.remove()
-    }, 1000)
+    }, 1200)
+}
+
+// 画一个矩形框标记检测到的怪物名字区域（绿色），帮助判断点击落点是否在怪身上。
+function drawMobBox(x, y, w, h) {
+    if (!window.__NEUZ_DEBUG) return
+    const d = document.createElement('div')
+    const s = `position: fixed; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; border: 1px solid lime; box-sizing: border-box; z-index: 9998; pointer-events: none;`
+    d.style = s
+    document.body.appendChild(d)
+    setTimeout(() => d.remove(), 1200)
 }
 
 function isMob() {

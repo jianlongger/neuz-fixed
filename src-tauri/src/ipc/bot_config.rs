@@ -166,6 +166,16 @@ pub struct FarmingConfig {
     /// obstacle escape) so the character stays in a fixed area.
     farm_radius: Option<u32>,
 
+    /// 调试叠层：开启后会在游戏画面上画出「检测到的怪物框」和「每次点击点」，
+    /// 用于排查点击落点是否落在怪物身上（0.16.25 起）。
+    debug_overlay: Option<bool>,
+
+    /// 选怪点击垂直偏移（像素）。点击落点 = 怪物名字框底边中心 + 该偏移。
+    /// 默认 10（沿用旧行为）。若点击总落在名字与身体之间的空档导致选不中，
+    /// 可加大该值把落点下移到怪物身体；若点到身体下方地面则减小。配合
+    /// debug_overlay 观察后微调（0.16.25 起）。
+    mob_click_offset_y: Option<i32>,
+
     /// Scan region margins (pixels). 0 means no restriction on that side.
     /// Restricting the scanned area to the play viewport (excluding the skill
     /// bar, chat, minimap, teammate bars, etc.) shrinks the pixel search,
@@ -241,6 +251,14 @@ impl FarmingConfig {
 
     pub fn farm_radius(&self) -> u32 {
         self.farm_radius.unwrap_or(0)
+    }
+
+    pub fn debug_overlay(&self) -> bool {
+        self.debug_overlay.unwrap_or(false)
+    }
+
+    pub fn mob_click_offset_y(&self) -> i32 {
+        self.mob_click_offset_y.unwrap_or(10)
     }
 
     pub fn scan_margin_top(&self) -> u32 {

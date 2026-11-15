@@ -82,6 +82,8 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
         'circle_pattern_rotation_duration': 30,
         'min_hp_attack': 30,
         'farm_radius': 0,
+        'debug_overlay': false,
+        'mob_click_offset_y': 10,
         'scan_margin_top': 0,
         'scan_margin_bottom': 0,
         'scan_margin_left': 0,
@@ -277,6 +279,18 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                         layout="v"
                         label={<ConfigLabel name="刷怪范围(像素)" helpText="以角色当前所在位置（开始刷怪时的位置）为圆心，仅在该半径内选取并攻击怪物，并停止自动走位巡逻，避免角色跑远。0 = 不限制。" />}
                         item={<NumericInput unit='px' min={0} max={2000} value={config.farm_radius ?? 0} onChange={value => onChange?.({ ...config, farm_radius: value })} />}
+                    />
+
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="调试叠层(显示点击落点)" helpText="开启后会在游戏画面上画出绿色怪物框与彩色点击点。绿框=识别到的怪物名字区域，蓝点=每次点击位置。用于排查点击是否落在怪物身上：若蓝点总在绿框上方空档，就把下方「点击偏移」调大；若蓝点在怪物身体下方地面，就调小。排查完建议关闭以免遮挡画面。" />}
+                        item={<BooleanSlider value={config.debug_overlay ?? false} onChange={value => onChange?.({ ...config, debug_overlay: value })} />}
+                    />
+
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="选怪点击偏移(px)" helpText="点击落点 = 怪物名字框底边中心 + 该垂直偏移。默认 10（旧行为）。若点击总落在名字与身体间的空档导致选不中，调大（如 30~50）把落点下移到身体；若点到身体下方地面则调小（如 0~5）。配合「调试叠层」观察后微调。" />}
+                        item={<NumericInput unit='px' min={-50} max={200} value={config.mob_click_offset_y ?? 10} onChange={value => onChange?.({ ...config, mob_click_offset_y: value })} />}
                     />
 
                     <ConfigTableRow

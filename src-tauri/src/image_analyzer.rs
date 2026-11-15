@@ -404,7 +404,7 @@ impl ImageAnalyzer {
         // Calculate 2D euclidian distances to player
         let mut distances = Vec::default();
         for mob in mobs {
-            let point = mob.get_attack_coords();
+            let point = mob.get_attack_coords(10);
             let distance = (((mid_x - (point.x as i32)).pow(2) + (mid_y - (point.y as i32)).pow(2))
                 as f64)
                 .sqrt() as i32;
@@ -424,7 +424,7 @@ impl ImageAnalyzer {
             // Try finding closest mob that's not the mob to be avoided
             if let Some((mob, _distance)) = distances.iter().find(|(mob, _distance)| {
                 //*distance > 55
-                let coords = mob.get_attack_coords();
+                let coords = mob.get_attack_coords(10);
                 let mut result = true;
                 for avoided_item in avoided_bounds {
                     if avoided_item.0.contains_point(&coords) {
