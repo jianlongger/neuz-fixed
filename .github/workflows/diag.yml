@@ -5,6 +5,9 @@ on:
   push:
     branches: [ diag ]
 
+permissions:
+  contents: write
+
 jobs:
   diag:
     runs-on: windows-latest
@@ -24,15 +27,19 @@ jobs:
       - name: cargo check (capture output)
         shell: pwsh
         run: |
-          New-Item -Path $env:GITHUB_WORKSPACE -Name check.txt -ItemType File -Force
+          New-Item -Path $env:GITHUB_WORKSPACE -Name diag_err.txt -ItemType File -Force
+          Add-Content $env:GITHUB_WORKSPACE\diag_err.txt "STEP_REACHED=cargo_check"
           cd src-tauri
-          cargo check --message-format=short *> $env:GITHUB_WORKSPACE\check.txt 2>&1
-          Add-Content $env:GITHUB_WORKSPACE\check.txt "EXITCODE=$LASTEXITCODE"
+          cargo check --message-format=short *> $env:GITHUB_WORKSPACE\diag_err.txt 2>&1
+          Add-Content $env:GITHUB_WORKSPACE\diag_err.txt "CARGO_EXIT=$LASTEXITCODE"
 
-      - name: Upload diag artifact
+      - name: Commit error back to repo
         if: always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-diag
-          path: ${{ github.workspace }}/check.txt
+        shell: pwsh
+        run: |
+          cd $env:GITHUB_WORKSPACE
+          git config user.email "diag@local"
+          git config user.name "diag-bot"
+          git add diag_err.txt
+          git commit -m "diag: cargo check output" | Out-Null
+          git push origin HEAD:refs/heads/diag-err
