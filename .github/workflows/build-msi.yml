@@ -3,12 +3,10 @@ name: 'Build Neuz MSI (fixed-point)'
 on:
   workflow_dispatch:
   push:
-    branches:
-      - base-0.16.4
+    branches: [ base-0.16.4 ]
 
 permissions:
   contents: write
-  issues: write
 
 env:
   CI: false
@@ -20,51 +18,64 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: '20'
+          cache: 'yarn'
 
-      - name: Ensure yarn available
-        run: npm install -g yarn
-
-      - name: Install Rust stable
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+          cache-on-failure: true
+
+      - name: Enable yarn (corepack)
+        run: corepack enable
+
+      - name: Install WiX Toolset (required for MSI bundling)
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip" -OutFile wix.zip
+          Expand-Archive wix.zip -DestinationPath wix
+          echo "$env:GITHUB_WORKSPACE\wix" | Out-File -Append -FilePath $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Remove stale Cargo.lock
+        run: Remove-Item src-tauri/Cargo.lock -Force -ErrorAction SilentlyContinue
+        shell: pwsh
+
       - name: Install frontend deps
-        shell: bash
-        continue-on-error: true
-        run: yarn install 2>&1 | tee frontend-install.log
+        run: yarn install
 
-      - name: Build frontend
-        shell: bash
-        continue-on-error: true
-        run: yarn build 2>&1 | tee frontend.log
+      - name: Build Tauri release
+        run: yarn tauri build
 
-      - name: Build Tauri MSI
-        shell: bash
-        continue-on-error: true
-        run: yarn tauri build 2>&1 | tee build.log
-
-      - name: Upload MSI artifact
-        if: success()
+      - name: Upload msi artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Neuz-0.16.4-msi
+          name: neuz-0.16.4-msi
           path: src-tauri/target/release/bundle/msi/*.msi
-          if-no-files-found: error
 
-      # Reliable visibility: post the tail of the build log back as a repo issue,
-      # because this account purges workflow logs and artifacts.
-      - name: Report build log via issue
-        if: always()
+      - name: Create GitHub release with MSI
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          BODY=$(tail -c 6000 build.log 2>/dev/null | jq -Rs .)
-          curl -s -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -d "{\"title\":\"CI build log $(date -u +%H%M%S) sha=${{ github.sha }}\",\"body\":$BODY}" \
-            https://api.github.com/repos/jianlongger/neuz-fixed/issues
+          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi | head -1)
+          TAG="v0.16.4-fixedpoint"
+          # create (or reuse) a release for this tag
+          curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"Neuz 0.16.4 fixed-point\",\"body\":\"Auto-built MSI (fixed-point + no Sentry)\",\"draft\":false,\"prerelease\":false}" \
+            https://api.github.com/repos/jianlongger/neuz-fixed/releases > rel.json
+          RELID=$(python3 -c "import json;print(json.load(open('rel.json')).get('id',''))" 2>/dev/null)
+          if [ -n "$RELID" ]; then
+            curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "Content-Type: application/octet-stream" \
+              --data-binary @"$MSI" \
+              "https://uploads.github.com/repos/jianlongger/neuz-fixed/releases/$RELID/assets?name=Neuz_0.16.4.msi"
+            echo "release asset uploaded"
+          else
+            echo "release creation skipped/failed; see rel.json"; cat rel.json
+          fi
