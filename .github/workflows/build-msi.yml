@@ -28,32 +28,33 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend deps and build
-        run: yarn && yarn build
+        shell: bash
+        run: yarn && yarn build 2>&1 | tee frontend.log
 
       - name: Build Tauri MSI
-        run: yarn tauri build
+        shell: bash
+        run: yarn tauri build 2>&1 | tee build.log
 
       - name: Upload MSI artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Neuz-0.16.4-msi
           path: src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error
 
-      # Fallback retrieval: push the MSI to a dedicated branch so it can be
-      # fetched via git even if the workflow artifact is purged by the account.
-      - name: Push MSI to build-artifacts branch
-        if: success()
+      # Always capture build logs to a branch so we can read errors even when
+      # this account purges workflow logs.
+      - name: Push build logs to branch (always)
+        if: always()
         shell: bash
         continue-on-error: true
         run: |
-          set -e
-          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi | head -1)
-          echo "Found MSI: $MSI"
-          mkdir -p _out
-          cp "$MSI" _out/Neuz_0.16.4.msi
+          mkdir -p _log
+          cp build.log _log/build.log 2>/dev/null || echo "no build.log"
+          cp frontend.log _log/frontend.log 2>/dev/null || echo "no frontend.log"
           git config user.email "neuz-bot@local"
           git config user.name "Neuz Builder"
-          git add -f _out/Neuz_0.16.4.msi
-          git commit -m "ci: Neuz 0.16.4 MSI ($(date -u +%Y-%m-%dT%H:%M:%SZ))" || echo "nothing to commit"
-          git push -f origin HEAD:build-artifacts
+          git add -f _log/build.log _log/frontend.log
+          git commit -m "ci: build logs $(date -u +%H%M%S)" || echo "nothing to commit"
+          git push -f origin HEAD:build-logs
