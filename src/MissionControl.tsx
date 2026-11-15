@@ -28,17 +28,14 @@ type Props = {
 }
 
 const MissionControl = ({ className, lastVersion, currentVersion }: Props) => {
-    //const [imageData, setImageData] = useState({ data: '', width: 0, height: 0 })
+    const [imageData, setImageData] = useState<{ data: string, width: number, height: number }>({ data: '', width: 0, height: 0 })
     const [info, setInfo] = useState<FrontendInfoModel | null>(null);
     const [config, setConfig] = useState<BotConfigModel | null>(null);
 
     useEffect(() => {
-        listen<string>('bot_visualizer_update', event => {
-        /*  const payload = event.payload as unknown as string[]
-            const data = payload[0]
-            const width = Number(payload[1])
-            const height = Number(payload[2])
-            setImageData({ data, width, height }) */
+        listen<{ image: string, width: number, height: number }>('bot_visualizer_update', event => {
+            const p = event.payload
+            setImageData({ data: p.image, width: p.width, height: p.height })
         })
 
         listen('bot_info_s2c', event => {
@@ -97,7 +94,7 @@ const MissionControl = ({ className, lastVersion, currentVersion }: Props) => {
                             <Tab mode="AutoShout" image={ImageShout} />
                         </TabControl>
                         <div className="config-container">
-                            {config?.mode === 'Farming' && (<FarmingConfig botState={farmingState} botStopWatch={farmStopWatch.watch} info={info} config={config.farming_config} onChange={makeConfigUpdater('farming_config')} />)}
+                            {config?.mode === 'Farming' && (<FarmingConfig botState={farmingState} botStopWatch={farmStopWatch.watch} info={info} config={config.farming_config} imageData={imageData} onChange={makeConfigUpdater('farming_config')} />)}
                             {config?.mode === 'Support' && (<SupportConfig botState={supportState} botStopWatch={suppStopWatch.watch} info={info} config={config.support_config} onChange={makeConfigUpdater('support_config')} />)}
                             {config?.mode === 'AutoShout' && (<ShoutConfig config={config.shout_config} onChange={makeConfigUpdater('shout_config')} />)}
                         </div>

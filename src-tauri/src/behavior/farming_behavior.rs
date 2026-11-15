@@ -400,35 +400,23 @@ impl FarmingBehavior<'_> {
             };
             let mob_list = self.prioritize_aggro(config, image, mobs);
 
-        // Fixed position mode: only keep mobs within the fixed point radius and
-        // attack those, ignoring everything else so the character never roams.
+        // Fixed position mode: the character is locked at the screen center (the
+        // game keeps the camera on it), so we anchor the farm radius on the center
+        // of the captured frame. `find_closest_mob` already measures distance from
+        // that center, so only mobs whose attack point lies within `radius` of the
+        // character can ever be clicked — clicking a nearby mob attacks in place and
+        // never makes the character walk toward it. (fixed_point_x/y are a visual
+        // reference marker only, set via the UI pick tool; the functional anchor is
+        // always the screen center.)
         if config.fixed_point_enabled() {
-            let fx = config.fixed_point_x();
-            let fy = config.fixed_point_y();
             let radius = config.fixed_point_radius();
-            let in_range: Vec<Target> = mob_list
-                .into_iter()
-                .filter(|mob| {
-                    let point = mob.get_attack_coords();
-                    let distance = {
-                        let dx = fx - point.x as i32;
-                        let dy = fy - point.y as i32;
-                        ((dx * dx + dy * dy) as f64).sqrt() as i32
-                    };
-                    distance <= radius
-                })
-                .collect();
-            if in_range.is_empty() {
-                // No mob near the fixed point: stay put and keep scanning
-                return State::NoEnemyFound;
-            }
             let chosen = if self.avoided_bounds.is_empty() {
-                image.find_closest_mob(&in_range, None, 1000, self.logger)
+                image.find_closest_mob(&mob_list, None, radius, self.logger)
             } else {
                 image.find_closest_mob(
-                    &in_range,
+                    &mob_list,
                     Some(&self.avoided_bounds),
-                    1000,
+                    radius,
                     self.logger,
                 )
             };
@@ -436,6 +424,7 @@ impl FarmingBehavior<'_> {
                 self.rotation_movement_tries = 0;
                 return State::EnemyFound(*mob);
             }
+            // No mob inside the radius: stay put and keep scanning.
             return State::NoEnemyFound;
         }
 
@@ -643,6 +632,17 @@ impl FarmingBehavior<'_> {
             self.is_attacking = true;
             self.already_attack_count = 0;
             /*  } */
+        }
+
+        // Fixed position mode: if the character gets pulled away from the camp
+        // point (the locked target drifts beyond the radius around the screen
+        // center), abort the attack. The character stops walking and the camera
+        // re-centers it on the spot — i.e. it "returns" to the fixed point.
+        if config.fixed_point_enabled() {
+            let distance_from_center = image.get_target_marker_distance(mob.clone());
+            if distance_from_center > config.fixed_point_radius() {
+                return self.abort_attack(image);
+            }
         }
 
         if image.client_stats.target_on_screen || image.client_stats.target_is_alive {

@@ -358,8 +358,9 @@ impl FarmingConfig {
         self.fixed_point_x.unwrap_or(275)
     }
     pub fn fixed_point_y(&self) -> i32 {
-        // Default to a lower-middle position where the character usually stands
-        self.fixed_point_y.unwrap_or(420)
+        // Default to the vertical center of the 630px tall game window, i.e. where
+        // the character (and therefore the camera) is locked.
+        self.fixed_point_y.unwrap_or(315)
     }
     pub fn fixed_point_radius(&self) -> i32 {
         self.fixed_point_radius.unwrap_or(150)

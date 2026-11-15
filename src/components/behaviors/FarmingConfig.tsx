@@ -9,7 +9,7 @@ import ColorSelector from '../config/ColorSelector'
 
 import SlotBar from '../SlotBar'
 import { createSlotBars, FarmingConfigModel } from '../../models/BotConfig'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, MouseEvent } from 'react'
 import { FrontendInfoModel } from '../../models/FrontendInfo'
 import Modal from '../Modal'
 import useModal from '../utils/UseModal'
@@ -22,12 +22,85 @@ type Props = {
     className?: string,
     info: FrontendInfoModel | null,
     config: FarmingConfigModel,
+    imageData?: { data: string, width: number, height: number } | null,
     onChange: (config: FarmingConfigModel) => void,
     botStopWatch: StopWatchValues | null,
     botState: string,
 }
 
-const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botState }: Props) => {
+// Live-frame picker: shows the captured game view with the fixed-point camp circle
+// (centered on the character) and lets the user click to set the farm radius.
+const FixedPointPicker = ({
+    imageData,
+    radius,
+    onPick,
+}: {
+    imageData?: { data: string, width: number, height: number } | null,
+    radius: number,
+    onPick: (radius: number) => void,
+}) => {
+    const ref = useRef<HTMLDivElement>(null)
+    if (!imageData || !imageData.data) {
+        return (
+            <div style={{ color: '#bbb', fontSize: 12 }}>
+                运行机器人后，可在此实时画面中点击圆心（角色）到边缘的位置来设定攻击半径。
+            </div>
+        )
+    }
+    const { width, height, data } = imageData
+    const dispW = Math.min(360, width)
+    const scale = dispW / width
+    const dispH = Math.round(height * scale)
+    const cx = dispW / 2
+    const cy = dispH / 2
+    const r = Math.round(radius * scale)
+
+    const handleClick = (e: MouseEvent<HTMLDivElement>) => {
+        if (!ref.current) return
+        const rect = ref.current.getBoundingClientRect()
+        const x = e.clientX - rect.left
+        const y = e.clientY - rect.top
+        const origX = x / scale
+        const origY = y / scale
+        const dx = origX - width / 2
+        const dy = origY - height / 2
+        const dist = Math.round(Math.sqrt(dx * dx + dy * dy))
+        onPick(Math.max(20, Math.min(400, dist)))
+    }
+
+    return (
+        <div>
+            <div
+                ref={ref}
+                onClick={handleClick}
+                style={{
+                    position: 'relative',
+                    width: dispW,
+                    height: dispH,
+                    cursor: 'crosshair',
+                    border: '1px solid #444',
+                    lineHeight: 0,
+                }}
+            >
+                <img src={data} alt="" style={{ width: dispW, height: dispH, display: 'block' }} />
+                <svg
+                    width={dispW}
+                    height={dispH}
+                    style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
+                >
+                    <circle cx={cx} cy={cy} r={r} fill="rgba(0,255,0,0.12)" stroke="#00ff00" strokeWidth={2} />
+                    <line x1={cx - 8} y1={cy} x2={cx + 8} y2={cy} stroke="#00ff00" strokeWidth={2} />
+                    <line x1={cx} y1={cy - 8} x2={cx} y2={cy + 8} stroke="#00ff00" strokeWidth={2} />
+                </svg>
+            </div>
+            <div style={{ color: '#bbb', fontSize: 12, marginTop: 4 }}>
+                点击圆心到边缘设定半径（当前 {radius}px，范围 20–400）
+            </div>
+        </div>
+    )
+}
+
+const FarmingConfig = ({ className, info, config, imageData, onChange, botStopWatch, botState }: Props) => {
     const statsModal = useModal()
     const debugModal = useModal()
     const debugWarningModal = useModal(debugModal)
@@ -59,7 +132,7 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
         'aoe_farming': 1,
         'fixed_point_enabled': false,
         'fixed_point_x': 275,
-        'fixed_point_y': 420,
+        'fixed_point_y': 315,
         'fixed_point_radius': 150,
     }
 
@@ -166,23 +239,34 @@ const FarmingConfig = ({ className, info, config, onChange, botStopWatch, botSta
                 <ConfigTable>
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Enable fixed position" helpText="When enabled the character stays in place and only attacks monsters within the radius of the fixed point. It will not rotate or walk to search." />}
+                        label={<ConfigLabel name="Enable fixed position" helpText="角色锚定在画面中心：只攻击以角色（画面中心）为圆心、Radius 为半径的圈内怪物，绝不走位。被击退/拉扯到圈外时自动停止并回正到中心。" />}
                         item={<BooleanSlider value={config.fixed_point_enabled ?? false} onChange={value => onChange?.({ ...config, fixed_point_enabled: value })} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Point X" helpText="X coordinate (screen pixels, 0-550) of the fixed point where the character stands." />}
-                        item={<NumericInput min={0} max={550} unit='px' value={config.fixed_point_x} onChange={value => onChange({...config, fixed_point_x: value})} />}
+                        label={<ConfigLabel name="Point X" helpText="固定点参考坐标 X（默认画面中心 275）。功能锚点始终是画面中心，此值仅作参考显示，一般无需修改。" />}
+                        item={<NumericInput min={0} max={800} unit='px' value={config.fixed_point_x} onChange={value => onChange({...config, fixed_point_x: value})} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Point Y" helpText="Y coordinate (screen pixels, 0-630) of the fixed point where the character stands." />}
-                        item={<NumericInput min={0} max={630} unit='px' value={config.fixed_point_y} onChange={value => onChange({...config, fixed_point_y: value})} />}
+                        label={<ConfigLabel name="Point Y" helpText="固定点参考坐标 Y（默认画面中心 315）。功能锚点始终是画面中心，此值仅作参考显示，一般无需修改。" />}
+                        item={<NumericInput min={0} max={600} unit='px' value={config.fixed_point_y} onChange={value => onChange({...config, fixed_point_y: value})} />}
                     />
                     <ConfigTableRow
                         layout="v"
-                        label={<ConfigLabel name="Radius" helpText="Only monsters whose attack point is within this radius (screen pixels) of the fixed point will be attacked." />}
+                        label={<ConfigLabel name="Radius" helpText="Only monsters whose attack point is within this radius (screen pixels) of the character (screen center) will be attacked. You can also set it by clicking the live frame below." />}
                         item={<NumericInput min={10} max={400} unit='px' value={config.fixed_point_radius} onChange={value => onChange({...config, fixed_point_radius: value})} />}
+                    />
+                    <ConfigTableRow
+                        layout="v"
+                        label={<ConfigLabel name="在画面中点选半径" helpText="角色始终位于画面中心（绿圈），只攻击绿圈内的怪；超出范围会自动回到中心。点击圆心到边缘即可设定半径。" />}
+                        item={
+                            <FixedPointPicker
+                                imageData={imageData}
+                                radius={config.fixed_point_radius ?? 150}
+                                onPick={(r) => onChange?.({ ...config, fixed_point_radius: r })}
+                            />
+                        }
                     />
                 </ConfigTable>
             }/>

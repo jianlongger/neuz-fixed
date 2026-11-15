@@ -8,7 +8,7 @@ mod movement;
 mod platform;
 mod utils;
 
-use std::{ fs, io, os::windows::process, path::{ Path, PathBuf }, sync::Arc, time::Duration };
+use std::{ fs, io, os::windows::process, path::{ Path, PathBuf }, sync::Arc, time::{ Duration, Instant } };
 
 use guard::guard;
 use ipc::FrontendInfo;
@@ -358,6 +358,9 @@ fn start_bot(profile_id: String, state: tauri::State<AppState>, app_handle: taur
 
         let mut last_mode: Option<BotMode> = None;
         let mut last_is_running: Option<bool> = None;
+        // Throttle for streaming the captured frame to the frontend (visualizer /
+        // fixed-point picker). Keeps the IPC payload rate bounded.
+        let mut last_visualizer_emit: Option<Instant> = None;
         let mut frontend_info: Arc<RwLock<FrontendInfo>> = Arc::new(
             RwLock::new(FrontendInfo::deserialize_or_default())
         );
@@ -473,6 +476,37 @@ fn start_bot(profile_id: String, state: tauri::State<AppState>, app_handle: taur
             if image_analyzer.image_is_some() {
                 // Update stats
                 image_analyzer.client_stats.update(&image_analyzer.clone(), &logger);
+
+                // Stream the captured frame to the frontend so the user can see the
+                // live game view, view the fixed-point camp circle, and click to pick
+                // the farm radius. Throttled to ~4 fps to keep the IPC payload small.
+                if last_visualizer_emit.map_or(true, |t| t.elapsed() > Duration::from_millis(250)) {
+                    if let Some(img) = image_analyzer.image.as_ref() {
+                        let raw = img.as_raw().clone();
+                        if let Some(rgba) = image::RgbaImage::from_raw(img.width(), img.height(), raw) {
+                            let dyn_img = image::DynamicImage::ImageRgba8(rgba);
+                            let mut png_buf: Vec<u8> = Vec::new();
+                            if dyn_img
+                                .write_to(
+                                    &mut std::io::Cursor::new(&mut png_buf),
+                                    image::ImageOutputFormat::Png,
+                                )
+                                .is_ok()
+                            {
+                                let b64 = base64::encode(&png_buf);
+                                let _ = app_handle.emit_all(
+                                    "bot_visualizer_update",
+                                    serde_json::json!({
+                                        "image": format!("data:image/png;base64,{}", b64),
+                                        "width": img.width(),
+                                        "height": img.height()
+                                    }),
+                                );
+                            }
+                        }
+                    }
+                    last_visualizer_emit = Some(Instant::now());
+                }
 
                 // Run the current behavior
                 guard!(let Some(mode) = config.mode() else { continue; });
