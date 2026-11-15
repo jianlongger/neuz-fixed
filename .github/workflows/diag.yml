@@ -1,0 +1,36 @@
+name: Diag Rust check (fixed)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ diag ]
+
+jobs:
+  diag:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+          cache-on-failure: true
+
+      - name: cargo check (capture output)
+        shell: pwsh
+        run: |
+          cd src-tauri
+          cargo check --message-format=short *>&1 | Tee-Object -FilePath $env:GITHUB_WORKSPACE\check.txt
+          echo "EXIT=$LASTEXITCODE" | Out-File -Append -FilePath $env:GITHUB_WORKSPACE\check.txt
+
+      - name: Upload diag artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-diag
+          path: check.txt
