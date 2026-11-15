@@ -64,9 +64,6 @@ pub struct FarmingBehavior<'a> {
     // 导致怪没死就跳到另一只（问题：怪物没打死又选中下一个），并频繁换目标引发乱跑。
     // 这里锁定当前这只，补点只围绕它，直到它连续不在原位才判定击杀。
     attack_target_pos: Option<Point>,
-    // 攻击期间的补点计数：每 3 次放行一次"无条件点击"兜底，其余走 isMob 门控，
-    // 杜绝悬停不在怪上时按下鼠标（点地面 → 角色乱走）。
-    retarget_count: u32,
     concurrent_mobs_under_attack: u32,
     wait_duration: Option<Duration>,
     wait_start: Instant,
@@ -104,7 +101,6 @@ impl<'a> Behavior<'a> for FarmingBehavior<'a> {
             last_no_ennemy_time: None,
             last_retarget_time: Instant::now(),
             attack_target_pos: None,
-            retarget_count: 0,
             concurrent_mobs_under_attack: 0,
             wait_duration: None,
             wait_start: Instant::now(),
@@ -667,42 +663,44 @@ impl FarmingBehavior<'_> {
         // 发送已配置的攻击技能（若未配置则跳过，依赖游戏自动攻击）。
         self.get_slot_for(config, None, SlotType::AttackSkill, true);
 
-        // 周期性用"当前实时检测到的坐标"补点选怪，但只补「锁定目标附近」的那只。
-        // 距离安全带 200px：锁定目标若漂出此范围（角色走动带动镜头移动、屏幕
-        // 坐标系失效），视为目标丢失、本次不补点，交给击杀判定回搜索——
-        // 否则会追着屏幕另一头的怪一路狂点乱跑（0.16.22"朝同一方向一直点击"）。
-        if self.last_retarget_time.elapsed() > Duration::from_millis(700) {
+        // 周期用"当前实时检测坐标"补点选怪，只围绕「锁定目标」那只（不再用
+        // find_closest_mob 抢离屏幕中心最近的怪，避免怪没死就换目标）。坐标来自
+        // 每次 fresh 检测，永不落后者陈旧值，所以不会像 0.16.18 那样点到地面乱跑。
+        // 距离上限放宽到 400px：角色走动/镜头转动带动目标在屏幕上平移时仍跟得住，
+        // 不会因 0.16.22/23 的 200px 过严而频繁判定"目标丢失"→不补点→点不到怪。
+        // 点击始终无条件（checkMob:false）：0.16.22/23 的 isMob 门控会抑制大量点击，
+        // 而本游戏的合成 mousemove 能否稳定把光标置为 curattack 不可靠，门控反而让
+        // "选中"概率更低。无条件点击 + 游戏"选中即自动攻击"是 0.16.20 已验证可行的路径。
+        if self.last_retarget_time.elapsed() > Duration::from_millis(500) {
             if let Some(pos) = self.attack_target_pos {
                 let detected = image.identify_mobs(config);
-                if let Some(current) = self.find_target_near(detected, pos, 200) {
+                if let Some(current) = self.find_target_near(detected, pos, 400) {
                     let point = current.get_attack_coords();
                     self.attack_target_pos = Some(point);
                     self.last_click_pos = Some(point);
-                    // 门控补点：默认走 isMob()（悬停在怪上才按下，杜绝点地面）；
-                    // 每 3 次放行一次无条件点击兜底，防止游戏光标判定失灵时永远站桩。
-                    self.retarget_count += 1;
-                    let check_mob = self.retarget_count % 3 != 0;
-                    eval_mob_click(self.window, point, check_mob);
+                    eval_mob_click(self.window, point, false);
                     self.last_retarget_time = Instant::now();
                 }
             }
         }
 
-        // 击杀/离开判定：只有锁定的目标连续若干次检测都「不在原位置附近」才认为已死，
-        // 避免怪物短暂移出识别范围或某一帧漏检就误判击杀、提前换目标。
+        // 击杀/离开判定：锁定的目标连续若干次检测都「不在原位置附近(≤150px)」才认为
+        // 已死，避免怪物短暂移出识别范围或某一帧漏检就误判击杀、提前换目标。
         if self.attack_tick % 10 == 0 {
+            let detected = image.identify_mobs(config);
             let mut still_there = false;
             if let Some(pos) = self.attack_target_pos {
-                let detected = image.identify_mobs(config);
                 for m in detected.iter() {
                     let p = m.get_attack_coords();
                     let dx = (p.x as i32 - pos.x as i32).abs();
                     let dy = (p.y as i32 - pos.y as i32).abs();
-                    if dx <= 70 && dy <= 70 {
+                    if dx <= 150 && dy <= 150 {
                         still_there = true;
                         break;
                     }
                 }
+            } else {
+                still_there = true;
             }
             if still_there {
                 self.no_mob_near_frames = 0;
